@@ -1,0 +1,17 @@
+{
+  "name": "Vent4000 — Météo parachutisme Paraclub de Namur",
+  "short_name": "Vent4000",
+  "description": "Ça saute à Namur ? Verdict météo par jour d'ouverture, vents du sol à 4000 m (EBNM).",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1424",
+  "theme_color": "#122036",
+  "lang": "fr",
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="jour">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Vent4000 — Ça saute à Namur ?</title>
+  <meta name="description" content="Météo parachutisme du Paraclub de Namur (EBNM) : verdict par jour d'ouverture, vents du sol à 4000 m.">
+  <meta name="theme-color" content="#122036">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=Barlow:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+
+  <header class="entete">
+    <div class="entete-titre">
+      <h1>Vent<span>4000</span></h1>
+      <p class="entete-sous">Paraclub de Namur · EBNM</p>
+    </div>
+    <div class="entete-actions">
+      <a id="lien-gmaps" class="btn-icone" target="_blank" rel="noopener" title="Itinéraire Google Maps" aria-label="Itinéraire Google Maps">🗺️</a>
+      <a id="lien-waze" class="btn-icone" target="_blank" rel="noopener" title="Itinéraire Waze" aria-label="Itinéraire Waze">🚗</a>
+      <button id="btn-reglages" class="btn-icone" title="Réglages" aria-label="Réglages">⚙️</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Chargement -->
+    <div id="chargement" class="chargement">
+      <div class="manche-a-air" aria-hidden="true"></div>
+      <p>Lecture du ciel au-dessus de Temploux…</p>
+    </div>
+
+    <!-- Vue Semaine -->
+    <section id="vue-semaine" hidden>
+      <div class="bandeau-niveau">
+        Seuils « <strong id="niveau-actif">Tandem</strong> » —
+        <button id="lien-changer-niveau" class="lien" onclick="document.getElementById('btn-reglages').click()">changer</button>
+      </div>
+      <h2 class="titre-section">Jours d'ouverture — 7 prochains jours</h2>
+      <div class="jours"></div>
+      <p id="maj" class="note-maj"></p>
+    </section>
+
+    <!-- Vue Jour -->
+    <section id="vue-jour" hidden>
+      <button id="btn-retour" class="btn-retour">← Semaine</button>
+      <div class="jour-entete">
+        <h2 id="jour-titre"></h2>
+        <p id="jour-soustitre" class="sous-titre"></p>
+        <div id="jour-creneaux" class="creneaux"></div>
+      </div>
+
+      <h3 class="titre-section">Heure par heure <span class="hint">(vent sol en km/h)</span></h3>
+      <div id="timeline" class="timeline" role="tablist"></div>
+
+      <ul id="raisons" class="raisons"></ul>
+
+      <h3 class="titre-section">Profil du vent — sol → largage</h3>
+      <div id="profil" class="profil"></div>
+
+      <div class="piste-bloc">
+        <svg id="boussole" viewBox="0 0 120 120" width="120" height="120" aria-label="Boussole : axe de piste et vent au sol"></svg>
+        <div class="piste-infos">
+          <h3 class="titre-section">Vent / piste</h3>
+          <p id="crosswind"></p>
+        </div>
+      </div>
+
+      <h3 class="titre-section">Détails</h3>
+      <div id="details" class="details"></div>
+    </section>
+
+    <!-- Vue Réglages -->
+    <section id="vue-reglages" hidden>
+      <button id="btn-reglages-retour" class="btn-retour">← Semaine</button>
+      <h2>Réglages</h2>
+
+      <label class="champ">
+        <span>Niveau de pratique</span>
+        <select id="reglage-niveau"></select>
+      </label>
+
+      <label class="champ">
+        <span>Vent max au sol (km/h)</span>
+        <input id="reglage-vent" type="number" min="5" max="60" step="1" inputmode="numeric">
+      </label>
+
+      <label class="champ">
+        <span>Plafond minimum (m)</span>
+        <input id="reglage-plafond" type="number" min="300" max="4000" step="100" inputmode="numeric">
+      </label>
+
+      <button id="reglage-reset" class="btn secondaire">Revenir aux seuils du niveau</button>
+
+      <p class="avertissement">
+        ⚠ Seuils <strong>indicatifs</strong>, inspirés des références internationales (USPA).
+        La décision de sauter appartient toujours au Paraclub et à tes moniteurs.
+      </p>
+    </section>
+  </main>
+
+  <footer class="pied">
+    <nav class="pied-liens">
+      <a id="lien-irm" target="_blank" rel="noopener">IRM</a>
+      <a id="lien-windy" target="_blank" rel="noopener">Windy</a>
+      <a id="lien-club" target="_blank" rel="noopener">Paraclub</a>
+    </nav>
+    <p class="pied-note">Prévisions Open-Meteo · outil personnel, sans valeur officielle · <span id="version"></span></p>
+  </footer>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
