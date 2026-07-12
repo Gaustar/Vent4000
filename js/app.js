@@ -2,9 +2,9 @@
 // Vent4000 — Application (UI)
 // ============================================================
 
-import { DZ, NIVEAUX_PRESSION, NIVEAUX_PRATIQUE, LIENS, VERSION } from "./config.js";
+import { DZ, NIVEAUX_PRESSION, NIVEAUX_AGL, NIVEAUX_PRATIQUE, LIENS, VERSION } from "./config.js";
 import { statutOuverture } from "./ouverture.js";
-import { scoreHeure, scoreCreneau, meilleurVerdict, ventPiste } from "./scoring.js";
+import { scoreHeure, scoreCreneau, meilleurVerdict, ventPiste, niveauConfiance } from "./scoring.js";
 import { chargerMeteo } from "./meteo.js";
 
 // ------------------------------------------------------------
@@ -203,6 +203,18 @@ function rendreJour() {
   $("#jour-soustitre").textContent =
     `${info.ouverture.type === "vendredi" ? "Ouverture dès 16h" : "Ouvert 8h30"} → coucher ${heureDe(jour.sunset)}`;
 
+  // Nowcast "actuellement" (uniquement si on consulte aujourd'hui)
+  const actuelEl = $("#actuel");
+  const actuel = etat.meteo.actuel;
+  if (actuel && jour.date === todayIso()) {
+    actuelEl.hidden = false;
+    actuelEl.innerHTML =
+      `<span class="actuel-point"></span> Actuellement : <strong>${Math.round(actuel.vent ?? 0)} km/h</strong>
+       (rafales ${Math.round(actuel.rafales ?? 0)}) · ${cardinal(actuel.direction)} · ${Math.round(actuel.temp ?? 0)}°C`;
+  } else {
+    actuelEl.hidden = true;
+  }
+
   // Badges de créneaux
   $("#jour-creneaux").innerHTML = info.creneaux
     .map((c) => `<span class="badge grand ${c.verdict}">${EMOJI[c.verdict]} ${c.label}</span>`)
@@ -270,7 +282,20 @@ function rendreDetailHeure(h, score, seuils) {
     }));
   }
 
-  // Ligne sol (avec rafales)
+  // Niveaux bas (80/120/180 m AGL) — comblent l'écart jusqu'à 925 hPa (~800 m)
+  for (const m of NIVEAUX_AGL) {
+    const n = h.niveauxAGL?.[m];
+    profil.appendChild(ligneProfil({
+      altitude: `${m} m`,
+      role: m === 180 ? "Basse altitude" : "",
+      vent: n?.vent,
+      dir: n?.dir,
+      temp: null,
+    }));
+  }
+
+  // Ligne sol (avec rafales + confiance multi-modèle)
+  const confiance = niveauConfiance(h.vent10, h.comparaison?.vent);
   profil.appendChild(ligneProfil({
     altitude: "Sol",
     role: `Rafales ${Math.round(h.rafales10 ?? 0)} km/h`,
@@ -279,6 +304,17 @@ function rendreDetailHeure(h, score, seuils) {
     temp: h.t2m,
     sol: true,
   }));
+
+  // ---- Badge de confiance (accord ICON-D2 / AROME) ----
+  const LABELS_CONFIANCE = {
+    haute: { texte: "Confiance haute", detail: `2 modèles s'accordent (écart ${confiance.ecart} km/h)` },
+    moyenne: { texte: "Confiance moyenne", detail: `modèles proches (écart ${confiance.ecart} km/h)` },
+    faible: { texte: "Confiance faible", detail: `modèles divergents (écart ${confiance.ecart} km/h) — à revérifier` },
+    unique: { texte: "Modèle unique", detail: "comparaison indisponible au-delà de J+3" },
+  };
+  const lc = LABELS_CONFIANCE[confiance.niveau];
+  $("#confiance").className = `confiance confiance-${confiance.niveau}`;
+  $("#confiance").innerHTML = `<strong>${lc.texte}</strong><span>${lc.detail}</span>`;
 
   // ---- Boussole piste + crosswind ----
   rendreBoussole(h.direction10 ?? 0, h.vent10 ?? 0);
@@ -421,6 +457,8 @@ async function init() {
   $("#lien-irm").href = LIENS.irm;
   $("#lien-windy").href = LIENS.windy;
   $("#lien-club").href = LIENS.club;
+  $("#lien-briefing").href = LIENS.briefing;
+  $("#lien-briefing-jour").href = LIENS.briefing;
   $("#version").textContent = `v${VERSION}`;
 
   // Navigation
