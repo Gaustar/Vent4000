@@ -105,3 +105,17 @@ export function meilleurVerdict(verdicts) {
   if (verdicts.includes("orange")) return "orange";
   return "rouge";
 }
+
+/**
+ * Niveau de confiance basé sur l'accord entre deux modèles météo indépendants
+ * (ex. DWD ICON-D2 vs Météo-France AROME) pour le vent au sol.
+ * @param {number} ventPrimaire
+ * @param {number|null|undefined} ventSecondaire — absent au-delà de J+3 (AROME)
+ */
+export function niveauConfiance(ventPrimaire, ventSecondaire) {
+  if (ventSecondaire == null || ventPrimaire == null) return { niveau: "unique", ecart: null };
+  const ecart = Math.round(Math.abs(ventPrimaire - ventSecondaire));
+  if (ecart <= SEUILS_COMMUNS.confianceHauteMax) return { niveau: "haute", ecart };
+  if (ecart <= SEUILS_COMMUNS.confianceMoyenneMax) return { niveau: "moyenne", ecart };
+  return { niveau: "faible", ecart };
+}
