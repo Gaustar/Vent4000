@@ -1,391 +1,67 @@
-/* ============================================================
-   Vent4000 — Design
-   Palette « ciel & manche à air » : bleus d'altitude + orange
-   sécurité (la manche à air, seul accent vif de la page).
-   Thème auto jour/nuit via [data-theme].
-   ============================================================ */
+// ============================================================
+// Vent4000 — Service worker
+// Shell applicatif : cache-first. API Open-Meteo : network-first
+// avec repli sur la dernière prévision en cache (mode hors-ligne).
+// ============================================================
 
-:root,
-:root[data-theme="jour"] {
-  --fond-haut: #cfe2f1;
-  --fond-bas: #f0f7fc;
-  --surface: #ffffff;
-  --bord: #c3d8e8;
-  --encre: #16324a;
-  --encre-douce: #52708a;
-  --accent: #ff6b2c;           /* orange manche à air */
-  --vert: #2f9e5f;
-  --orange: #e09a2d;
-  --rouge: #d94f43;
-  --vert-fond: #e3f4ea;
-  --orange-fond: #fbf0da;
-  --rouge-fond: #fae4e1;
-  --ombre: 0 2px 10px rgba(22, 50, 74, 0.08);
-}
+const CACHE = "vent4000-v2";
+const SHELL = [
+  "./",
+  "./index.html",
+  "./css/style.css",
+  "./js/app.js",
+  "./js/config.js",
+  "./js/meteo.js",
+  "./js/ouverture.js",
+  "./js/scoring.js",
+  "./manifest.json",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
+];
 
-:root[data-theme="nuit"] {
-  --fond-haut: #0b1424;
-  --fond-bas: #16233b;
-  --surface: #1a2c46;
-  --bord: #2b466a;
-  --encre: #e2ecf7;
-  --encre-douce: #93a9c0;
-  --accent: #ff7a3d;
-  --vert: #45c07d;
-  --orange: #eab04c;
-  --rouge: #ee6b5e;
-  --vert-fond: #17382a;
-  --orange-fond: #3a2f16;
-  --rouge-fond: #3d1f1c;
-  --ombre: 0 2px 12px rgba(0, 0, 0, 0.35);
-}
+self.addEventListener("install", (e) => {
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
+  self.skipWaiting();
+});
 
-* { box-sizing: border-box; }
+self.addEventListener("activate", (e) => {
+  e.waitUntil(
+    caches.keys().then((cles) =>
+      Promise.all(cles.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+    )
+  );
+  self.clients.claim();
+});
 
-html { -webkit-text-size-adjust: 100%; }
+self.addEventListener("fetch", (e) => {
+  const url = new URL(e.request.url);
 
-body {
-  margin: 0;
-  min-height: 100dvh;
-  font-family: "Barlow", system-ui, sans-serif;
-  color: var(--encre);
-  background: linear-gradient(180deg, var(--fond-haut), var(--fond-bas) 320px);
-  background-attachment: fixed;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
-}
+  // API météo : réseau d'abord, cache en secours
+  if (url.hostname === "api.open-meteo.com") {
+    e.respondWith(
+      fetch(e.request)
+        .then((rep) => {
+          const copie = rep.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copie));
+          return rep;
+        })
+        .catch(() => caches.match(e.request))
+    );
+    return;
+  }
 
-main { max-width: 640px; margin: 0 auto; padding: 0 16px 32px; }
-
-h1, h2, h3, .carte-dow, .chip-h, .badge {
-  font-family: "Barlow Condensed", "Barlow", sans-serif;
-}
-
-/* ---------- En-tête ---------- */
-.entete {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 14px 16px 6px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.entete h1 {
-  margin: 0;
-  font-size: 30px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-}
-.entete h1 span { color: var(--accent); }
-.entete-sous { margin: 0; font-size: 13px; color: var(--encre-douce); }
-.entete-actions { display: flex; gap: 8px; }
-.btn-icone {
-  display: grid;
-  place-items: center;
-  width: 42px; height: 42px;
-  border-radius: 12px;
-  border: 1px solid var(--bord);
-  background: var(--surface);
-  font-size: 19px;
-  text-decoration: none;
-  cursor: pointer;
-  box-shadow: var(--ombre);
-}
-
-/* ---------- Chargement : manche à air ---------- */
-.chargement { text-align: center; padding: 64px 0; color: var(--encre-douce); }
-.manche-a-air {
-  width: 84px; height: 26px;
-  margin: 0 auto 18px;
-  background: repeating-linear-gradient(90deg,
-    var(--accent) 0 14px, #fff 14px 28px);
-  clip-path: polygon(0 0, 100% 22%, 100% 78%, 0 100%);
-  transform-origin: left center;
-  animation: flotte 1.6s ease-in-out infinite alternate;
-  border-radius: 3px;
-}
-@keyframes flotte {
-  from { transform: rotate(-7deg) scaleX(0.92); }
-  to   { transform: rotate(6deg); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .manche-a-air { animation: none; }
-}
-
-/* ---------- Vue Semaine ---------- */
-.bandeau-niveau {
-  margin: 8px 0 4px;
-  padding: 10px 14px;
-  border-radius: 12px;
-  background: var(--surface);
-  border: 1px solid var(--bord);
-  font-size: 14px;
-  color: var(--encre-douce);
-}
-.lien {
-  background: none; border: none; padding: 0;
-  color: var(--accent); font: inherit; cursor: pointer;
-  text-decoration: underline;
-}
-.titre-section {
-  font-size: 17px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: var(--encre-douce);
-  margin: 22px 0 10px;
-}
-.titre-section .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
-
-.jours { display: grid; gap: 10px; }
-.carte-jour {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas: "date pastille" "badges badges";
-  gap: 6px 10px;
-  padding: 14px;
-  border-radius: 14px;
-  border: 1px solid var(--bord);
-  background: var(--surface);
-  text-align: left;
-  cursor: pointer;
-  box-shadow: var(--ombre);
-  color: inherit;
-  font: inherit;
-}
-.carte-jour.lointain { opacity: 0.55; }
-.carte-date { grid-area: date; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.carte-dow { font-size: 21px; font-weight: 700; }
-.carte-num { color: var(--encre-douce); font-size: 15px; }
-.tag {
-  font-size: 11px;
-  padding: 2px 7px;
-  border-radius: 99px;
-  border: 1px solid var(--bord);
-  color: var(--encre-douce);
-}
-.carte-verdict { grid-area: pastille; width: 20px; height: 20px; border-radius: 50%; align-self: center; }
-.pastille-vert { background: var(--vert); }
-.pastille-orange { background: var(--orange); }
-.pastille-rouge { background: var(--rouge); }
-.carte-badges { grid-area: badges; display: flex; gap: 8px; flex-wrap: wrap; }
-.badge {
-  font-size: 14px;
-  font-weight: 500;
-  padding: 4px 10px;
-  border-radius: 99px;
-}
-.badge.grand { font-size: 16px; padding: 6px 14px; }
-.badge.vert { background: var(--vert-fond); color: var(--vert); }
-.badge.orange { background: var(--orange-fond); color: var(--orange); }
-.badge.rouge { background: var(--rouge-fond); color: var(--rouge); }
-
-.vide {
-  padding: 24px;
-  border-radius: 14px;
-  background: var(--surface);
-  border: 1px dashed var(--bord);
-  color: var(--encre-douce);
-}
-.note-maj { font-size: 12px; color: var(--encre-douce); margin-top: 14px; }
-
-/* ---------- Vue Jour ---------- */
-.btn-retour {
-  background: none; border: none; padding: 12px 0 4px;
-  color: var(--accent); font: inherit; font-weight: 600;
-  cursor: pointer; font-size: 15px;
-}
-.jour-entete h2 { margin: 4px 0 2px; font-size: 28px; }
-.sous-titre { margin: 0 0 10px; color: var(--encre-douce); font-size: 14px; }
-.creneaux { display: flex; gap: 8px; flex-wrap: wrap; }
-
-.timeline {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  padding-bottom: 6px;
-  scrollbar-width: thin;
-}
-.chip {
-  flex: 0 0 auto;
-  min-width: 52px;
-  padding: 8px 6px;
-  border-radius: 12px;
-  border: 2px solid transparent;
-  display: grid;
-  justify-items: center;
-  gap: 2px;
-  cursor: pointer;
-  font: inherit;
-}
-.chip-h { font-size: 16px; font-weight: 700; }
-.chip-fleche {
-  display: inline-block;
-  font-size: 13px;
-  color: var(--accent);
-  transition: transform 0.4s ease;
-}
-.chip-v { font-family: "IBM Plex Mono", monospace; font-size: 13px; }
-.chip-v small { font-size: 9px; opacity: 0.7; }
-.chip-maintenant {
-  display: block;
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  color: var(--accent);
-  margin-bottom: 1px;
-}
-.chip.vert { background: var(--vert-fond); color: var(--vert); }
-.chip.orange { background: var(--orange-fond); color: var(--orange); }
-.chip.rouge { background: var(--rouge-fond); color: var(--rouge); }
-.chip.actif { border-color: currentColor; }
-.chip.maintenant { box-shadow: 0 0 0 2px var(--accent) inset; }
-
-.raisons { list-style: none; padding: 0; margin: 12px 0 0; }
-.raisons li {
-  display: inline-block;
-  margin: 0 6px 6px 0;
-  padding: 5px 12px;
-  border-radius: 99px;
-  background: var(--rouge-fond);
-  color: var(--rouge);
-  font-size: 14px;
-}
-.raisons li.ok { background: var(--vert-fond); color: var(--vert); }
-
-/* ---------- Profil vertical (signature) ---------- */
-.profil {
-  border-radius: 14px;
-  border: 1px solid var(--bord);
-  background:
-    linear-gradient(180deg,
-      color-mix(in srgb, var(--fond-haut) 55%, var(--surface)) 0%,
-      var(--surface) 100%);
-  overflow: hidden;
-  box-shadow: var(--ombre);
-}
-.niveau {
-  display: grid;
-  grid-template-columns: 1fr 44px 76px 62px;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 14px;
-  border-bottom: 1px dashed var(--bord);
-}
-.niveau:last-child { border-bottom: none; }
-.niveau.sol {
-  background: color-mix(in srgb, var(--accent) 9%, var(--surface));
-  border-top: 2px solid var(--accent);
-}
-.niv-alt strong { display: block; font-family: "IBM Plex Mono", monospace; font-size: 15px; }
-.niv-alt span { font-size: 12px; color: var(--encre-douce); }
-.niv-fleche {
-  display: grid;
-  justify-items: center;
-  gap: 1px;
-}
-.fleche-icone {
-  display: inline-block;
-  font-size: 20px;
-  color: var(--accent);
-  transition: transform 0.4s ease;
-}
-.fleche-cardinal {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--encre-douce);
-}
-.niv-vent, .niv-temp {
-  font-family: "IBM Plex Mono", monospace;
-  font-weight: 600;
-  font-size: 17px;
-  text-align: right;
-}
-.niv-vent span, .niv-temp span { font-size: 11px; color: var(--encre-douce); font-weight: 400; }
-
-/* ---------- Boussole / piste ---------- */
-.piste-bloc {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  margin-top: 20px;
-  padding: 14px;
-  border-radius: 14px;
-  border: 1px solid var(--bord);
-  background: var(--surface);
-  box-shadow: var(--ombre);
-}
-.piste-bloc .titre-section { margin: 0 0 6px; }
-.piste-infos p { margin: 0; font-size: 15px; }
-.piste-infos .note { display: block; font-size: 12px; color: var(--encre-douce); margin-top: 4px; }
-.b-cercle { fill: none; stroke: var(--bord); stroke-width: 2; }
-.b-cardinal { font-size: 11px; fill: var(--encre-douce); text-anchor: middle; font-family: "Barlow Condensed", sans-serif; }
-.b-piste { fill: color-mix(in srgb, var(--encre) 18%, var(--surface)); }
-.b-axe { stroke: var(--surface); stroke-width: 1.5; stroke-dasharray: 5 5; }
-.b-vent { stroke: var(--accent); stroke-linecap: round; }
-.b-pointe { fill: var(--accent); }
-.b-centre { fill: var(--encre); }
-
-/* ---------- Détails ---------- */
-.details { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.detail {
-  padding: 12px;
-  border-radius: 12px;
-  background: var(--surface);
-  border: 1px solid var(--bord);
-  display: grid;
-  gap: 4px;
-}
-.detail span { font-size: 12px; color: var(--encre-douce); }
-.detail strong { font-family: "IBM Plex Mono", monospace; font-size: 16px; }
-.detail.alerte { border-color: var(--orange); }
-.detail.alerte strong { color: var(--orange); }
-
-/* ---------- Réglages ---------- */
-#vue-reglages h2 { font-size: 26px; }
-.champ { display: grid; gap: 6px; margin-bottom: 16px; }
-.champ span { font-size: 14px; color: var(--encre-douce); }
-.champ select, .champ input {
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid var(--bord);
-  background: var(--surface);
-  color: var(--encre);
-  font: inherit;
-  font-size: 16px;
-}
-.btn, .btn.secondaire {
-  padding: 12px 18px;
-  border-radius: 12px;
-  border: 1px solid var(--bord);
-  background: var(--surface);
-  color: var(--encre);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-.avertissement {
-  margin-top: 22px;
-  padding: 14px;
-  border-radius: 12px;
-  background: var(--orange-fond);
-  color: var(--encre);
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-/* ---------- Pied ---------- */
-.pied {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 18px 16px calc(24px + env(safe-area-inset-bottom));
-  border-top: 1px solid var(--bord);
-  text-align: center;
-}
-.pied-liens { display: flex; gap: 22px; justify-content: center; margin-bottom: 8px; }
-.pied-liens a { color: var(--accent); text-decoration: none; font-weight: 600; }
-.pied-note { font-size: 12px; color: var(--encre-douce); margin: 0; }
-
-/* ---------- Accessibilité ---------- */
-:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-[hidden] { display: none !important; }
+  // Shell + polices : cache d'abord, réseau en secours
+  e.respondWith(
+    caches.match(e.request).then((enCache) => {
+      if (enCache) return enCache;
+      return fetch(e.request).then((rep) => {
+        if (rep.ok && (url.origin === location.origin || url.hostname.includes("gstatic") || url.hostname.includes("googleapis"))) {
+          const copie = rep.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copie));
+        }
+        return rep;
+      });
+    })
+  );
+});
+   
