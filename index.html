@@ -37,6 +37,9 @@
 
     <!-- Vue Semaine -->
     <section id="vue-semaine" hidden>
+      <a id="lien-briefing" class="bandeau-briefing" target="_blank" rel="noopener">
+        📋 <strong>Briefing officiel du club</strong> — vérifier avant de partir <span>↗</span>
+      </a>
       <div class="bandeau-niveau">
         Seuils « <strong id="niveau-actif">Tandem</strong> » —
         <button id="lien-changer-niveau" class="lien" onclick="document.getElementById('btn-reglages').click()">changer</button>
@@ -52,15 +55,19 @@
       <div class="jour-entete">
         <h2 id="jour-titre"></h2>
         <p id="jour-soustitre" class="sous-titre"></p>
+        <p id="actuel" class="actuel" hidden></p>
         <div id="jour-creneaux" class="creneaux"></div>
+        <a id="lien-briefing-jour" class="lien-briefing-compact" target="_blank" rel="noopener">📋 Briefing officiel du club ↗</a>
       </div>
 
       <h3 class="titre-section">Heure par heure <span class="hint">(vent sol en km/h)</span></h3>
       <div id="timeline" class="timeline" role="tablist"></div>
 
       <ul id="raisons" class="raisons"></ul>
+      <p id="confiance" class="confiance"></p>
 
       <h3 class="titre-section">Profil du vent — sol → largage</h3>
+      <p class="hint-profil">ICON-D2 (DWD) · niveaux 80-180 m + 925-600 hPa</p>
       <div id="profil" class="profil"></div>
 
       <div class="piste-bloc">
