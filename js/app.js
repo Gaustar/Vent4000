@@ -65,6 +65,25 @@ function heureDecimale(iso) {
   return parseInt(iso.slice(11, 13), 10) + parseInt(iso.slice(14, 16), 10) / 60;
 }
 
+/** Heure actuelle décimale (locale). */
+function heureCourante() {
+  const n = new Date();
+  return n.getHours() + n.getMinutes() / 60;
+}
+
+/** Date du jour au format YYYY-MM-DD (local), pour comparer aux dates Open-Meteo. */
+function todayIso() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+const CARDINAUX = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSO","SO","OSO","O","ONO","NO","NNO"];
+function cardinal(deg) {
+  if (deg == null) return "—";
+  return CARDINAUX[Math.round(deg / 22.5) % 16];
+}
+
 const EMOJI = { vert: "🟢", orange: "🟠", rouge: "🔴" };
 
 // ------------------------------------------------------------
@@ -76,17 +95,21 @@ const EMOJI = { vert: "🟢", orange: "🟠", rouge: "🔴" };
 function joursOuvertsScores() {
   const seuils = seuilsActifs();
   const resultat = [];
+  const maintenant = heureCourante();
+  const aujourdhui = todayIso();
 
   etat.meteo.jours.forEach((jour, index) => {
     const date = dateLocale(jour.date);
     const ouverture = statutOuverture(date);
     if (!ouverture) return;
 
+    const estAujourdhui = jour.date === aujourdhui;
     const coucher = heureDecimale(jour.sunset);
-    const creneaux = ouverture.creneaux.map((c) => {
+    let creneaux = ouverture.creneaux.map((c) => {
       const fin = c.fin ?? coucher;
       const heures = jour.heures
         .filter((h) => h.heure + 1 > c.debut && h.heure < fin)
+        .filter((h) => !estAujourdhui || h.heure >= Math.floor(maintenant))
         .map((h) => ({ h, score: scoreHeure(h, seuils) }));
       return {
         ...c,
@@ -94,6 +117,9 @@ function joursOuvertsScores() {
         verdict: scoreCreneau(heures.map((x) => x.score.verdict)),
       };
     });
+    // Aujourd'hui : un créneau déjà entièrement passé ne s'affiche plus
+    if (estAujourdhui) creneaux = creneaux.filter((c) => c.heures.length > 0);
+    if (estAujourdhui && creneaux.length === 0) return; // journée terminée
 
     resultat.push({
       index,
@@ -194,17 +220,29 @@ function rendreJour() {
     etat.heureSelectionnee = toutes[idx2 >= 0 ? idx2 : 0].h.heure;
   }
 
+  const estAujourdhui = jour.date === todayIso();
+  const heureActuelle = Math.floor(heureCourante());
+
   for (const { h, score } of toutes) {
+    const estMaintenant = estAujourdhui && h.heure === heureActuelle;
     const chip = document.createElement("button");
-    chip.className = `chip ${score.verdict}${h.heure === etat.heureSelectionnee ? " actif" : ""}`;
-    chip.innerHTML = `<span class="chip-h">${h.heure}h</span><span class="chip-v">${Math.round(h.vent10 ?? 0)}</span>`;
-    chip.title = score.raisons.join(" · ") || "Conditions favorables";
+    chip.className = `chip ${score.verdict}${h.heure === etat.heureSelectionnee ? " actif" : ""}${estMaintenant ? " maintenant" : ""}`;
+    const rotation = (h.direction10 ?? 0) + 180;
+    chip.innerHTML = `
+      ${estMaintenant ? `<span class="chip-maintenant">MAINTENANT</span>` : ""}
+      <span class="chip-h">${h.heure}h</span>
+      <span class="chip-fleche" style="transform:rotate(${rotation}deg)">➤</span>
+      <span class="chip-v">${Math.round(h.vent10 ?? 0)}<small>km/h</small></span>`;
+    chip.title = `Vent du ${cardinal(h.direction10)} (${Math.round(h.direction10 ?? 0)}°) · ${score.raisons.join(" · ") || "Conditions favorables"}`;
     chip.addEventListener("click", () => {
       etat.heureSelectionnee = h.heure;
       rendreJour();
     });
     timeline.appendChild(chip);
   }
+
+  const chipActif = timeline.querySelector(".chip.actif");
+  if (chipActif) chipActif.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
 
   // Détail de l'heure sélectionnée
   const sel = toutes.find((x) => x.h.heure === etat.heureSelectionnee) ?? toutes[0];
@@ -246,12 +284,14 @@ function rendreDetailHeure(h, score, seuils) {
   rendreBoussole(h.direction10 ?? 0, h.vent10 ?? 0);
   const vp = ventPiste(h.vent10 ?? 0, h.direction10 ?? 0);
   $("#crosswind").innerHTML =
-    `Traversier <strong>${vp.traversier} km/h</strong> · De face <strong>${vp.face} km/h</strong>
+    `Vent du <strong>${cardinal(h.direction10)}</strong> (${Math.round(h.direction10 ?? 0)}°) —
+     Traversier <strong>${vp.traversier} km/h</strong> · De face <strong>${vp.face} km/h</strong>
      <span class="note">axe piste ${String(DZ.qfu).padStart(3, "0")}° / ${DZ.qfu + 180}°</span>`;
 
   // ---- Grille de détails ----
   const plafondTxt = score.plafond === Infinity ? "Dégagé" : `~${score.plafond} m`;
   $("#details").innerHTML = [
+    ["Direction / vitesse sol", `${cardinal(h.direction10)} · ${Math.round(h.vent10 ?? 0)} km/h`],
     ["Plafond estimé", plafondTxt, score.plafond !== Infinity && score.plafond < seuils.plafondMin],
     ["Proba. pluie", `${h.probaPluie ?? 0} %`],
     ["Visibilité", h.visibilite != null ? `${(h.visibilite / 1000).toFixed(0)} km` : "—"],
@@ -272,8 +312,10 @@ function ligneProfil({ altitude, role, vent, dir, temp, sol = false }) {
   const rotation = dir != null ? dir + 180 : 0;
   div.innerHTML = `
     <div class="niv-alt"><strong>${altitude}</strong><span>${role}</span></div>
-    <div class="niv-fleche" style="transform: rotate(${rotation}deg)"
-         title="${dir != null ? Math.round(dir) + "°" : ""}">➤</div>
+    <div class="niv-fleche" title="${dir != null ? Math.round(dir) + "°" : ""}">
+      <span class="fleche-icone" style="transform: rotate(${rotation}deg)">➤</span>
+      <span class="fleche-cardinal">${cardinal(dir)}</span>
+    </div>
     <div class="niv-vent">${vent != null ? Math.round(vent) : "—"}<span> km/h</span></div>
     <div class="niv-temp">${temp != null ? Math.round(temp) : "—"}<span> °C</span></div>`;
   return div;
