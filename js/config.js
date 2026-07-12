@@ -31,6 +31,11 @@ export const NIVEAUX_PRATIQUE = {
   brevetBCD:{ label: "Brevet B/C/D", ventMax: 46, plafondMin: 1100 },
 };
 
+// Niveaux "au-dessus du sol" (AGL direct, pas de conversion nécessaire) —
+// comblent l'écart entre le sol et le premier niveau de pression (925 hPa ≈ 800 m).
+// Zone la plus critique pour l'ouverture et l'atterrissage sous voile.
+export const NIVEAUX_AGL = [180, 120, 80];
+
 // Seuils communs (identiques quel que soit le niveau)
 export const SEUILS_COMMUNS = {
   precipMax: 0.2,        // mm/h — au-delà : rouge
@@ -42,6 +47,8 @@ export const SEUILS_COMMUNS = {
   ventOrangeRatio: 0.8,  // vent > 80 % du seuil → orange
   nuagesOrangeMin: 30,   // % couverture basse+moyenne combinée
   nuagesOrangeMax: 75,
+  confianceHauteMax: 5,  // km/h d'écart entre modèles → confiance haute
+  confianceMoyenneMax: 12, // km/h d'écart → confiance moyenne ; au-delà = faible
 };
 
 // Saison & créneaux du club
@@ -62,6 +69,7 @@ export const LIENS = {
   irm: "https://www.meteo.be/fr/namur",
   windy: `https://www.windy.com/${DZ.lat}/${DZ.lon}?wind,${DZ.lat},${DZ.lon},11`,
   club: "https://paraclubnamur.be",
+  briefing: "https://pro.paraclubnamur.be/fr/meteo",
 };
 
 export const VERSION = "1.0.0";
