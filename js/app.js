@@ -295,7 +295,10 @@ function rendreDetailHeure(h, score, seuils) {
   }
 
   // Ligne sol (avec rafales + confiance multi-modèle)
-  const confiance = niveauConfiance(h.vent10, h.comparaison?.vent);
+  const confiance = niveauConfiance(h.vent10, [
+    { nom: "AROME", vent: h.comparaisons?.arome?.vent },
+    { nom: "ECMWF", vent: h.comparaisons?.ecmwf?.vent },
+  ]);
   profil.appendChild(ligneProfil({
     altitude: "Sol",
     role: `Rafales ${Math.round(h.rafales10 ?? 0)} km/h`,
@@ -305,12 +308,12 @@ function rendreDetailHeure(h, score, seuils) {
     sol: true,
   }));
 
-  // ---- Badge de confiance (accord ICON-D2 / AROME) ----
+  // ---- Badge de confiance (accord ICON-D2 / AROME / ECMWF) ----
   const LABELS_CONFIANCE = {
-    haute: { texte: "Confiance haute", detail: `2 modèles s'accordent (écart ${confiance.ecart} km/h)` },
-    moyenne: { texte: "Confiance moyenne", detail: `modèles proches (écart ${confiance.ecart} km/h)` },
-    faible: { texte: "Confiance faible", detail: `modèles divergents (écart ${confiance.ecart} km/h) — à revérifier` },
-    unique: { texte: "Modèle unique", detail: "comparaison indisponible au-delà de J+3" },
+    haute: { texte: "Confiance haute", detail: `${confiance.nModeles} modèles s'accordent (écart max ${confiance.ecart} km/h)` },
+    moyenne: { texte: "Confiance moyenne", detail: `${confiance.nModeles} modèles proches (écart max ${confiance.ecart} km/h)` },
+    faible: { texte: "Confiance faible", detail: `${confiance.nModeles} modèles divergent (écart max ${confiance.ecart} km/h) — à revérifier` },
+    unique: { texte: "Modèle unique", detail: "comparaison indisponible pour cette heure" },
   };
   const lc = LABELS_CONFIANCE[confiance.niveau];
   $("#confiance").className = `confiance confiance-${confiance.niveau}`;

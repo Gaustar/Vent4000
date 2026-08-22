@@ -3,7 +3,8 @@
 // l'API forecast standard, best_match automatique) : surface,
 // niveaux bas AGL (80/120/180 m), niveaux de pression, nowcast.
 // + Comparaison Météo-France AROME/ARPEGE (meteofrance_seamless)
-// sur J0-J3 pour un indicateur de confiance multi-modèle.
+// sur J0-J3 et ECMWF IFS (0.25°, open-data) sur les 7 jours,
+// pour un indicateur de confiance multi-modèle sur toute la semaine.
 // ============================================================
 
 import { DZ, NIVEAUX_PRESSION, NIVEAUX_AGL } from "./config.js";
@@ -57,19 +58,34 @@ export function urlMeteoFrance() {
   return `https://api.open-meteo.com/v1/forecast?${params}`;
 }
 
+/** Troisième modèle indépendant (ECMWF IFS 0.25°, open-data), 7 jours. */
+export function urlEcmwf() {
+  const params = new URLSearchParams({
+    latitude: DZ.lat,
+    longitude: DZ.lon,
+    hourly: "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
+    models: "ecmwf_ifs025",
+    timezone: "Europe/Brussels",
+    wind_speed_unit: "kmh",
+    forecast_days: "7",
+  });
+  return `https://api.open-meteo.com/v1/forecast?${params}`;
+}
+
 /**
- * Récupère et normalise les prévisions (2 modèles en parallèle).
+ * Récupère et normalise les prévisions (3 modèles en parallèle).
  * @returns {Promise<{jours: Jour[], recupereLe: string, actuel: object|null}>}
  *   Jour = { date, sunrise, sunset, heures: Heure[] }
  *   Heure = { iso, heure, vent10, rafales10, direction10, t2m, pointRosee,
  *             precip, probaPluie, nuagesBas, nuagesMoyens, nuagesHauts,
  *             visibilite, cape, niveaux:{600:{...}}, niveauxAGL:{80:{...}},
- *             comparaison: {vent, direction} | null }
+ *             comparaisons: { arome: {vent,direction}|null, ecmwf: {vent,direction}|null } }
  */
 export async function chargerMeteo() {
-  const [repPrincipale, repComparaison] = await Promise.allSettled([
+  const [repPrincipale, repArome, repEcmwf] = await Promise.allSettled([
     fetch(urlOpenMeteo()),
     fetch(urlMeteoFrance()),
+    fetch(urlEcmwf()),
   ]);
 
   if (repPrincipale.status !== "fulfilled" || !repPrincipale.value.ok) {
@@ -77,20 +93,23 @@ export async function chargerMeteo() {
   }
   const d = await repPrincipale.value.json();
 
-  // La comparaison est un bonus : si elle échoue, l'app fonctionne quand même
-  // (confiance = "unique" au lieu de "haute/moyenne/faible").
-  let comparaison = null;
-  if (repComparaison.status === "fulfilled" && repComparaison.value.ok) {
+  // Les comparaisons sont un bonus : si elles échouent, l'app fonctionne quand
+  // même (confiance = "unique", ou dégradée au nombre de modèles disponibles).
+  async function mapModele(rep) {
+    if (rep.status !== "fulfilled" || !rep.value.ok) return null;
     try {
-      const c = await repComparaison.value.json();
-      comparaison = new Map(
+      const c = await rep.value.json();
+      return new Map(
         c.hourly.time.map((iso, i) => [
           iso,
           { vent: c.hourly.wind_speed_10m?.[i] ?? null, direction: c.hourly.wind_direction_10m?.[i] ?? null },
         ])
       );
-    } catch { /* comparaison indisponible, on continue sans */ }
+    } catch {
+      return null;
+    }
   }
+  const [arome, ecmwf] = await Promise.all([mapModele(repArome), mapModele(repEcmwf)]);
 
   const h = d.hourly;
   const parJour = new Map();
@@ -135,7 +154,10 @@ export async function chargerMeteo() {
       cape: h.cape?.[i] ?? null,
       niveaux,
       niveauxAGL,
-      comparaison: comparaison?.get(iso) ?? null,
+      comparaisons: {
+        arome: arome?.get(iso) ?? null,
+        ecmwf: ecmwf?.get(iso) ?? null,
+      },
     };
 
     if (!parJour.has(date)) parJour.set(date, []);
