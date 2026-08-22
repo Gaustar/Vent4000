@@ -107,15 +107,21 @@ export function meilleurVerdict(verdicts) {
 }
 
 /**
- * Niveau de confiance basé sur l'accord entre deux modèles météo indépendants
- * (ex. DWD ICON-D2 vs Météo-France AROME) pour le vent au sol.
+ * Niveau de confiance basé sur l'accord entre plusieurs modèles météo
+ * indépendants pour le vent au sol (DWD ICON = primaire, + Météo-France
+ * AROME sur J0-J3, + ECMWF IFS sur les 7 jours).
  * @param {number} ventPrimaire
- * @param {number|null|undefined} ventSecondaire — absent au-delà de J+3 (AROME)
+ * @param {Array<{nom:string, vent:number|null|undefined}>} autres — modèles secondaires disponibles à cette heure
+ * @returns {{niveau:string, ecart:number|null, nModeles:number}}
  */
-export function niveauConfiance(ventPrimaire, ventSecondaire) {
-  if (ventSecondaire == null || ventPrimaire == null) return { niveau: "unique", ecart: null };
-  const ecart = Math.round(Math.abs(ventPrimaire - ventSecondaire));
-  if (ecart <= SEUILS_COMMUNS.confianceHauteMax) return { niveau: "haute", ecart };
-  if (ecart <= SEUILS_COMMUNS.confianceMoyenneMax) return { niveau: "moyenne", ecart };
-  return { niveau: "faible", ecart };
+export function niveauConfiance(ventPrimaire, autres = []) {
+  const ecarts = autres
+    .filter((m) => m.vent != null && ventPrimaire != null)
+    .map((m) => Math.abs(ventPrimaire - m.vent));
+  if (ecarts.length === 0) return { niveau: "unique", ecart: null, nModeles: 1 };
+  const ecart = Math.round(Math.max(...ecarts));
+  const nModeles = ecarts.length + 1;
+  if (ecart <= SEUILS_COMMUNS.confianceHauteMax) return { niveau: "haute", ecart, nModeles };
+  if (ecart <= SEUILS_COMMUNS.confianceMoyenneMax) return { niveau: "moyenne", ecart, nModeles };
+  return { niveau: "faible", ecart, nModeles };
 }

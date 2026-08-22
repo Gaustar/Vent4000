@@ -22,6 +22,20 @@ du club, avec les vents du sol jusqu'à l'altitude de largage (~4000 m).
 - Thème automatique jour/nuit (basé sur le lever/coucher réel du soleil),
   installable sur l'écran d'accueil, cache hors-ligne (dernières prévisions).
 
+## Fiabilité v1.1
+
+- **Confiance sur 3 modèles, toute la semaine** : DWD ICON (primaire) +
+  Météo-France AROME (J0-J3) + ECMWF IFS 0.25° open-data (J0-J7). Avant,
+  la comparaison s'arrêtait à J+3 (AROME) et l'app tournait "à l'aveugle"
+  sur la seconde moitié de la fenêtre à 7 jours.
+- **Faits vérifiés contre sources primaires** (août 2026) : coordonnées et
+  altitude d'EBNM, et surtout l'**axe de piste 064°/244°** confirmés au
+  degré près par le *Règlement d'aérodrome EBNM v004 (01/2024)* §3.1 ;
+  horaires d'ouverture confirmés sur paraclubnamur.be en direct.
+- **Tests automatisés** (`js/*.test.mjs`, Node natif, aucune dépendance) sur
+  `scoring.js` et `ouverture.js` : calcul de Pâques, calendrier d'ouverture,
+  verdicts météo, vent traversier, confiance multi-modèle. `npm test`.
+
 ## Calendrier d'ouverture encodé
 
 - Week-ends et jours fériés belges (computus de Pâques inclus) :
@@ -41,14 +55,16 @@ Aucun build, aucune dépendance, aucune clé API.
 ## Architecture
 
 ```
-index.html          Page unique, 3 vues (Semaine / Jour / Réglages)
-css/style.css       Thèmes jour/nuit, profil vertical, boussole
-js/config.js        DZ, piste, niveaux/seuils, liens
-js/ouverture.js     Calendrier du club (pur, testable en Node)
-js/scoring.js       Moteur « ça saute ? » (pur, testable en Node)
-js/meteo.js         Fetch + parsing Open-Meteo (surface + niveaux hPa)
-js/app.js           UI et état
-sw.js               Service worker (offline)
+index.html            Page unique, 3 vues (Semaine / Jour / Réglages)
+css/style.css         Thèmes jour/nuit, profil vertical, boussole
+js/config.js          DZ, piste, niveaux/seuils, liens
+js/ouverture.js       Calendrier du club (pur, testable en Node)
+js/ouverture.test.mjs Tests (Pâques, fériés, créneaux)
+js/scoring.js         Moteur « ça saute ? » (pur, testable en Node)
+js/scoring.test.mjs   Tests (verdicts, crosswind, confiance multi-modèle)
+js/meteo.js           Fetch + parsing Open-Meteo (ICON + AROME + ECMWF)
+js/app.js             UI et état
+sw.js                 Service worker (offline)
 ```
 
 `scoring.js` et `ouverture.js` sont **sans dépendance DOM** : ils seront

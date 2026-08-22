@@ -1,1 +1,8 @@
-{"name":"vent4000","type":"module","private":true}
+{
+  "name": "vent4000",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test js/*.test.mjs"
+  }
+}
