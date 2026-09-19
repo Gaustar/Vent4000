@@ -1,5 +1,7 @@
 {
   "name": "vent4000",
+  "version": "1.2.0",
+  "description": "PWA météo — \"ça saute ?\" pour le Paraclub de Namur (EBNM)",
   "type": "module",
   "private": true,
   "scripts": {

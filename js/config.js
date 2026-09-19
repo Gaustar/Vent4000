@@ -22,13 +22,20 @@ export const NIVEAUX_PRESSION = [
 ];
 
 // Seuils par niveau de pratique (vent en km/h, plafond en m AGL)
-// ⚠ Valeurs INDICATIVES (références USPA / DZ internationales).
-// La décision finale appartient toujours au club et aux moniteurs.
+// ⚠ Valeurs INDICATIVES (références USPA SIM / pratiques DZ internationales,
+// cf. sources dans README §Fiabilité). La décision finale appartient
+// toujours au club et aux moniteurs.
+//
+// ecartRafalesOrange : écart rafale/moyenne (km/h) à partir duquel on
+// dégrade le verdict — un jumper expérimenté tolère un "spread" plus large
+// qu'un élève (cf. Skydivemag, "Winds Limits Part 1") :
+//   élève/tandem ≈ 5 kt (9 km/h) · licencié A ≈ 7 kt (13 km/h) ·
+//   B/C/D confirmé ≈ 10 kt (18 km/h).
 export const NIVEAUX_PRATIQUE = {
-  tandem: { label: "Tandem",       ventMax: 28, plafondMin: 1500 },
-  aff:    { label: "Élève AFF",    ventMax: 22, plafondMin: 2800 },
-  brevetA:{ label: "Brevet A",     ventMax: 33, plafondMin: 1400 },
-  brevetBCD:{ label: "Brevet B/C/D", ventMax: 46, plafondMin: 1100 },
+  tandem: { label: "Tandem",       ventMax: 28, plafondMin: 1500, ecartRafalesOrange: 9 },
+  aff:    { label: "Élève AFF",    ventMax: 22, plafondMin: 2800, ecartRafalesOrange: 9 },
+  brevetA:{ label: "Brevet A",     ventMax: 33, plafondMin: 1400, ecartRafalesOrange: 13 },
+  brevetBCD:{ label: "Brevet B/C/D", ventMax: 46, plafondMin: 1100, ecartRafalesOrange: 18 },
 };
 
 // Niveaux "au-dessus du sol" (AGL direct, pas de conversion nécessaire) —
@@ -43,12 +50,12 @@ export const SEUILS_COMMUNS = {
   capeOrange: 400,       // J/kg — instabilité notable
   capeRouge: 800,        // J/kg — risque orageux
   visibiliteMin: 5000,   // m — VFR
-  ecartRafalesOrange: 10,// km/h d'écart rafales/vent moyen (~5 kt)
   ventOrangeRatio: 0.8,  // vent > 80 % du seuil → orange
   nuagesOrangeMin: 30,   // % couverture basse+moyenne combinée
   nuagesOrangeMax: 75,
   confianceHauteMax: 5,  // km/h d'écart entre modèles → confiance haute
   confianceMoyenneMax: 12, // km/h d'écart → confiance moyenne ; au-delà = faible
+  tendanceHausseOrange: 8, // km/h de hausse d'une heure à l'autre → orange
 };
 
 // Saison & créneaux du club
@@ -72,4 +79,4 @@ export const LIENS = {
   briefing: "https://pro.paraclubnamur.be/fr/meteo",
 };
 
-export const VERSION = "1.1.0";
+export const VERSION = "1.2.0";
