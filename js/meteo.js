@@ -73,6 +73,29 @@ export function urlEcmwf() {
 }
 
 /**
+ * fetch() avec timeout — sans ça, une requête qui ne répond jamais (réseau
+ * capricieux en plein champ) laisse l'app bloquée indéfiniment sur l'écran
+ * de chargement, sans jamais basculer sur le cache hors-ligne.
+ */
+function fetchAvecTimeout(url, delaiMs) {
+  const controleur = new AbortController();
+  const minuteur = setTimeout(() => controleur.abort(), delaiMs);
+  return fetch(url, { signal: controleur.signal }).finally(() => clearTimeout(minuteur));
+}
+
+/**
+ * Date de la réponse HTTP (en-tête `Date`), pour savoir si les données
+ * viennent d'être récupérées ou si elles proviennent d'un cache (hors-ligne
+ * ou CDN) potentiellement ancien. Repli sur "maintenant" si l'en-tête est
+ * absent (certains navigateurs/CDN ne le fournissent pas systématiquement).
+ */
+function dateReponse(rep) {
+  const entete = rep?.headers?.get?.("date");
+  const d = entete ? new Date(entete) : null;
+  return d && !Number.isNaN(d.getTime()) ? d : new Date();
+}
+
+/**
  * Récupère et normalise les prévisions (3 modèles en parallèle).
  * @returns {Promise<{jours: Jour[], recupereLe: string, actuel: object|null}>}
  *   Jour = { date, sunrise, sunset, heures: Heure[] }
@@ -80,18 +103,32 @@ export function urlEcmwf() {
  *             precip, probaPluie, nuagesBas, nuagesMoyens, nuagesHauts,
  *             visibilite, cape, niveaux:{600:{...}}, niveauxAGL:{80:{...}},
  *             comparaisons: { arome: {vent,direction}|null, ecmwf: {vent,direction}|null } }
+ *   `recupereLe` reflète la date **réelle** de la réponse (en-tête HTTP),
+ *   pas l'heure locale de l'appareil : si le service worker a servi une
+ *   réponse de secours en cache (hors-ligne), `recupereLe` reste celle du
+ *   dernier succès réseau, pour ne jamais afficher un verdict périmé comme
+ *   s'il venait d'être calculé.
  */
 export async function chargerMeteo() {
+  const DELAI_PRINCIPAL = 15000;
+  const DELAI_SECONDAIRE = 10000;
   const [repPrincipale, repArome, repEcmwf] = await Promise.allSettled([
-    fetch(urlOpenMeteo()),
-    fetch(urlMeteoFrance()),
-    fetch(urlEcmwf()),
+    fetchAvecTimeout(urlOpenMeteo(), DELAI_PRINCIPAL),
+    fetchAvecTimeout(urlMeteoFrance(), DELAI_SECONDAIRE),
+    fetchAvecTimeout(urlEcmwf(), DELAI_SECONDAIRE),
   ]);
 
   if (repPrincipale.status !== "fulfilled" || !repPrincipale.value.ok) {
-    throw new Error(`Open-Meteo HTTP ${repPrincipale.value?.status ?? "?"}`);
+    const cause = repPrincipale.status === "fulfilled"
+      ? `HTTP ${repPrincipale.value.status}`
+      : (repPrincipale.reason?.name === "AbortError" ? "délai dépassé" : repPrincipale.reason?.message ?? "erreur réseau");
+    throw new Error(`Open-Meteo indisponible (${cause})`);
   }
+  const recupereLe = dateReponse(repPrincipale.value).toISOString();
   const d = await repPrincipale.value.json();
+  if (!d?.hourly?.time?.length || !d?.daily?.time?.length) {
+    throw new Error("Réponse Open-Meteo incomplète");
+  }
 
   // Les comparaisons sont un bonus : si elles échouent, l'app fonctionne quand
   // même (confiance = "unique", ou dégradée au nombre de modèles disponibles).
@@ -181,5 +218,5 @@ export async function chargerMeteo() {
       }
     : null;
 
-  return { jours, recupereLe: new Date().toISOString(), actuel };
+  return { jours, recupereLe, actuel };
 }

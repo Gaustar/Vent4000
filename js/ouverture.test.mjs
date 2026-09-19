@@ -63,3 +63,29 @@ test("Un vendredi hors saison (janvier) est fermé", () => {
 test("feriesBelges retourne 10 jours fériés fixes/mobiles", () => {
   assert.equal(feriesBelges(2026).length, 10);
 });
+
+test("Un jour férié en semaine ouvre comme un week-end (matin + après-midi)", () => {
+  const d = new Date(2026, 6, 21); // mardi 21 juillet 2026 = Fête nationale
+  assert.equal(d.getDay(), 2);
+  const o = statutOuverture(d);
+  assert.equal(o.type, "ferie");
+  assert.equal(o.creneaux.length, 2);
+});
+
+test("Un vendredi hors fenêtre mai-septembre (avril) est fermé même en saison", () => {
+  const d = new Date(2026, 3, 3); // vendredi 3 avril 2026, en saison mais avant mai
+  assert.equal(d.getDay(), 5);
+  assert.equal(statutOuverture(d), null);
+});
+
+test("Un vendredi hors fenêtre mai-septembre (octobre) est fermé même en saison", () => {
+  const d = new Date(2026, 9, 2); // vendredi 2 octobre 2026
+  assert.equal(d.getDay(), 5);
+  assert.equal(statutOuverture(d), null);
+});
+
+test("Pâques 2027 tombe le 28 mars (vérification croisée sur une 3e année)", () => {
+  const p = paques(2027);
+  assert.equal(p.getMonth(), 2);
+  assert.equal(p.getDate(), 28);
+});

@@ -54,6 +54,58 @@ test("Écart rafales/vent important -> orange (dégradant)", () => {
   assert.ok(s.raisons.some((r) => r.includes("Rafales")));
 });
 
+test("Écart rafales : seuil propre au niveau (élève plus strict qu'un B/C/D)", () => {
+  // Écart de 12 km/h : au-dessus du seuil élève/tandem (9), en-dessous du seuil B/C/D (18)
+  const s1 = scoreHeure(heure({ vent10: 10, rafales10: 22 }), { ventMax: 28, plafondMin: 1500, ecartRafalesOrange: 9 });
+  assert.equal(s1.verdict, "orange");
+  const s2 = scoreHeure(heure({ vent10: 10, rafales10: 22 }), { ventMax: 46, plafondMin: 1100, ecartRafalesOrange: 18 });
+  assert.equal(s2.verdict, "vert");
+});
+
+test("Rafale au-dessus du seuil (même si le vent moyen est sous le seuil) -> rouge", () => {
+  // La limite de vent s'applique à la rafale, pas à la moyenne (pratique DZ standard).
+  const s = scoreHeure(heure({ vent10: 20, rafales10: 30 }), SEUILS_TANDEM); // seuil 28
+  assert.equal(s.verdict, "rouge");
+  assert.ok(s.raisons.some((r) => r.includes("Rafales") && r.includes("seuil")));
+});
+
+test("Vent en hausse rapide d'une heure à l'autre -> orange", () => {
+  const s = scoreHeure(heure({ vent10: 20, rafales10: 22, ventPrecedent: 8 }), SEUILS_TANDEM);
+  assert.equal(s.verdict, "orange");
+  assert.ok(s.raisons.some((r) => r.includes("hausse rapide")));
+});
+
+test("Vent stable d'une heure à l'autre -> pas de dégradation liée à la tendance", () => {
+  const s = scoreHeure(heure({ vent10: 10, rafales10: 12, ventPrecedent: 9 }), SEUILS_TANDEM);
+  assert.equal(s.verdict, "vert");
+});
+
+test("Confiance faible entre modèles -> plafonné à orange même si tout est vert", () => {
+  const s = scoreHeure(
+    heure({ vent10: 10, comparaisons: { arome: { vent: 11 }, ecmwf: { vent: 32 } } }),
+    SEUILS_TANDEM
+  );
+  assert.equal(s.verdict, "orange");
+  assert.ok(s.raisons.some((r) => r.includes("divergents")));
+});
+
+test("Confiance haute entre modèles -> vert conservé", () => {
+  const s = scoreHeure(
+    heure({ vent10: 10, comparaisons: { arome: { vent: 11 }, ecmwf: { vent: 12 } } }),
+    SEUILS_TANDEM
+  );
+  assert.equal(s.verdict, "vert");
+});
+
+test("Confiance faible n'écrase pas un verdict déjà rouge/orange (raisons plus utiles conservées)", () => {
+  const s = scoreHeure(
+    heure({ vent10: 30, comparaisons: { arome: { vent: 11 }, ecmwf: { vent: 32 } } }),
+    SEUILS_TANDEM
+  );
+  assert.equal(s.verdict, "rouge");
+  assert.ok(s.raisons.some((r) => r.includes("Vent")));
+});
+
 test("scoreCreneau : 2h vertes consécutives -> vert", () => {
   assert.equal(scoreCreneau(["orange", "vert", "vert", "rouge"]), "vert");
 });

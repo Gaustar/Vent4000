@@ -39,6 +39,7 @@ function seuilsActifs() {
     label: base.label,
     ventMax: etat.reglages.ventMax ?? base.ventMax,
     plafondMin: etat.reglages.plafondMin ?? base.plafondMin,
+    ecartRafalesOrange: base.ecartRafalesOrange,
   };
 }
 
@@ -65,17 +66,31 @@ function heureDecimale(iso) {
   return parseInt(iso.slice(11, 13), 10) + parseInt(iso.slice(14, 16), 10) / 60;
 }
 
-/** Heure actuelle décimale (locale). */
-function heureCourante() {
-  const n = new Date();
-  return n.getHours() + n.getMinutes() / 60;
+// Les prévisions Open-Meteo sont ancrées sur Europe/Brussels (voir
+// meteo.js). On calcule "maintenant" dans le même fuseau plutôt que celui
+// de l'appareil : sinon un téléphone réglé sur un autre fuseau (voyage,
+// mauvaise config) comparerait des heures incohérentes et pourrait cacher
+// ou afficher le mauvais créneau du jour.
+const FMT_BRUXELLES = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/Brussels",
+  year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+});
+function partsBruxelles(date = new Date()) {
+  const p = Object.fromEntries(FMT_BRUXELLES.formatToParts(date).map((x) => [x.type, x.value]));
+  return p;
 }
 
-/** Date du jour au format YYYY-MM-DD (local), pour comparer aux dates Open-Meteo. */
+/** Heure actuelle décimale, fuseau Europe/Brussels. */
+function heureCourante() {
+  const p = partsBruxelles();
+  return parseInt(p.hour, 10) + parseInt(p.minute, 10) / 60;
+}
+
+/** Date du jour au format YYYY-MM-DD, fuseau Europe/Brussels. */
 function todayIso() {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  const p = partsBruxelles();
+  return `${p.year}-${p.month}-${p.day}`;
 }
 
 const CARDINAUX = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSO","SO","OSO","O","ONO","NO","NNO"];
@@ -105,12 +120,17 @@ function joursOuvertsScores() {
 
     const estAujourdhui = jour.date === aujourdhui;
     const coucher = heureDecimale(jour.sunset);
+    // Vent de l'heure précédente (même jour) pour détecter une hausse rapide.
+    const ventParHeure = new Map(jour.heures.map((h) => [h.heure, h.vent10]));
     let creneaux = ouverture.creneaux.map((c) => {
       const fin = c.fin ?? coucher;
       const heures = jour.heures
         .filter((h) => h.heure + 1 > c.debut && h.heure < fin)
         .filter((h) => !estAujourdhui || h.heure >= Math.floor(maintenant))
-        .map((h) => ({ h, score: scoreHeure(h, seuils) }));
+        .map((h) => ({
+          h,
+          score: scoreHeure({ ...h, ventPrecedent: ventParHeure.get(h.heure - 1) }, seuils),
+        }));
       return {
         ...c,
         heures,
@@ -437,15 +457,38 @@ function basculerVue(nom) {
 function appliquerTheme() {
   let nuit;
   const aujourdHui = etat.meteo?.jours?.[0];
+  const hd = heureCourante();
   if (aujourdHui?.sunrise && aujourdHui?.sunset) {
-    const maintenant = new Date();
-    const hd = maintenant.getHours() + maintenant.getMinutes() / 60;
     nuit = hd < heureDecimale(aujourdHui.sunrise) || hd > heureDecimale(aujourdHui.sunset);
   } else {
-    const h = new Date().getHours();
-    nuit = h < 7 || h >= 21;
+    nuit = hd < 7 || hd >= 21;
   }
   document.documentElement.dataset.theme = nuit ? "nuit" : "jour";
+}
+
+// ------------------------------------------------------------
+// Fraîcheur des données
+// ------------------------------------------------------------
+const AGE_PERIME_MIN = 90; // au-delà : la prévision affichée peut dater d'avant une coupure réseau
+
+/**
+ * Affiche l'heure réelle de récupération des prévisions, et alerte
+ * clairement si elles sont périmées (secours hors-ligne servi par le
+ * service worker) — un verdict vert basé sur des données de la veille
+ * serait dangereux à prendre pour argent comptant.
+ */
+function afficherFraicheur(recupereLeIso) {
+  const recupereLe = new Date(recupereLeIso);
+  const ageMin = (Date.now() - recupereLe.getTime()) / 60000;
+  const heureTxt = recupereLe.toLocaleTimeString("fr-BE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Brussels" });
+  const maj = $("#maj");
+  if (ageMin > AGE_PERIME_MIN) {
+    maj.innerHTML = `⚠️ <strong>Prévisions non rafraîchies depuis ${Math.round(ageMin / 60)} h</strong> (dernier succès réseau à ${heureTxt}) — vérifie ta connexion avant de te fier au verdict.`;
+    maj.classList.add("perime");
+  } else {
+    maj.textContent = `Prévisions Open-Meteo · mises à jour à ${heureTxt}`;
+    maj.classList.remove("perime");
+  }
 }
 
 // ------------------------------------------------------------
@@ -473,8 +516,7 @@ async function init() {
   try {
     etat.meteo = await chargerMeteo();
     appliquerTheme();
-    $("#maj").textContent =
-      `Prévisions Open-Meteo · mises à jour à ${new Date().toLocaleTimeString("fr-BE", { hour: "2-digit", minute: "2-digit" })}`;
+    afficherFraicheur(etat.meteo.recupereLe);
     rendreSemaine();
     $("#chargement").hidden = true;
     $("#vue-semaine").hidden = false;
