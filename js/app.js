@@ -782,15 +782,23 @@ if ("serviceWorker" in navigator) {
     let derniereVerif = 0;
     const chercherMaj = () => {
       if (document.hidden) return;
-      // Garde-fou : pas plus d'une vérification par minute, ces trois
-      // événements pouvant se déclencher ensemble sur une même reprise.
-      if (Date.now() - derniereVerif < 60000) return;
+      // Garde-fou court : uniquement pour éviter les appels en rafale
+      // quand plusieurs de ces événements partent sur une même reprise.
+      // Volontairement bas : GitHub Pages sert le shell derrière un CDN
+      // en `max-age=600`, donc une vérification peut tomber sur une copie
+      // encore ancienne — il faut pouvoir en refaire une peu après.
+      if (Date.now() - derniereVerif < 10000) return;
       derniereVerif = Date.now();
       reg.update().catch(() => {});
     };
     document.addEventListener("visibilitychange", chercherMaj);
     window.addEventListener("pageshow", chercherMaj);
     window.addEventListener("focus", chercherMaj);
+    // Filet de sécurité pour une page laissée ouverte très longtemps (cas
+    // typique d'une app installée) : on revérifie périodiquement, sinon
+    // une version déployée juste après la dernière reprise pourrait
+    // n'être vue qu'à la reprise suivante.
+    setInterval(chercherMaj, 30 * 60 * 1000);
     chercherMaj();
   }).catch(() => {});
 }
