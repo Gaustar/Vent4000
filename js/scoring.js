@@ -74,6 +74,12 @@ export function scoreHeure(h, seuils) {
   if ((h.probaPluie ?? 0) >= C.probaPluieMax) raisons.push("Forte proba de pluie");
   if ((h.cape ?? 0) >= C.capeRouge) raisons.push("Risque orageux (CAPE)");
   if (h.visibilite != null && h.visibilite < C.visibiliteMin) raisons.push("Visibilité < 5 km");
+  // Ciel bouché : une couche compacte empêche le largage VFR, même si la
+  // base estimée est haute. Testé par étage (voir config.js).
+  if ((h.nuagesMoyens ?? 0) >= C.nuagesBoucheRouge)
+    raisons.push("Couche compacte à l'altitude de largage");
+  else if ((h.nuagesBas ?? 0) >= C.nuagesBoucheRouge)
+    raisons.push("Ciel bouché (couche basse)");
   if (plafond < seuils.plafondMin) raisons.push(`Plafond ~${plafond} m`);
   if ((h.vent10 ?? 0) > seuils.ventMax) raisons.push(`Vent ${Math.round(h.vent10)} km/h`);
   // La limite de vent s'applique à la rafale, pas à la moyenne : c'est la
@@ -95,8 +101,7 @@ export function scoreHeure(h, seuils) {
       raisons.push(`Vent en hausse rapide (+${Math.round(hausse)} km/h en 1h)`);
   }
   const couverture = (h.nuagesBas ?? 0) + (h.nuagesMoyens ?? 0);
-  if (couverture >= C.nuagesOrangeMin && couverture <= C.nuagesOrangeMax)
-    raisons.push("Ciel partiellement couvert");
+  if (couverture >= C.nuagesOrangeMin) raisons.push("Ciel partiellement couvert");
   if ((h.cape ?? 0) >= C.capeOrange) raisons.push("Instabilité (CAPE)");
   if (raisons.length) return { verdict: "orange", raisons, plafond };
 
@@ -107,7 +112,7 @@ export function scoreHeure(h, seuils) {
     const confiance = niveauConfiance(h.vent10, [
       { nom: "AROME", vent: h.comparaisons.arome?.vent },
       { nom: "ECMWF", vent: h.comparaisons.ecmwf?.vent },
-    ]);
+    ], h.echeanceJours ?? 0);
     if (confiance.niveau === "faible") {
       return {
         verdict: "orange",
@@ -121,24 +126,63 @@ export function scoreHeure(h, seuils) {
 }
 
 /**
- * Score d'un créneau = meilleure fenêtre de 2 h consécutives.
+ * Meilleure fenêtre sautable d'un créneau : la plus longue plage d'heures
+ * consécutives (≥ 2 h) tenable, en privilégiant une plage entièrement verte.
+ *
+ * Une heure `h` couvre la tranche [h, h+1[ : une plage 10h→12h (heures 10,
+ * 11 et 12) se lit donc « 10h → 13h ».
+ *
+ * @param {Array<{heure:number, verdict:string}>} heures — dans l'ordre chronologique
+ * @returns {{verdict:string, debut:number|null, fin:number|null, duree:number}}
+ */
+export function fenetreSautable(heures) {
+  if (!heures?.length) return { verdict: "rouge", debut: null, fin: null, duree: 0 };
+  if (heures.length === 1) {
+    const h = heures[0];
+    // Une heure isolée ne fait pas une fenêtre : pas de 2 h consécutives.
+    return { verdict: h.verdict, debut: h.heure, fin: h.heure + 1, duree: 1 };
+  }
+
+  /** Plus longue plage d'heures consécutives dont le verdict passe le test. */
+  function plusLonguePlage(test) {
+    let meilleure = null;
+    let debut = null;
+    let precedente = null;
+    for (const h of heures) {
+      if (!test(h.verdict)) {
+        debut = null;
+        precedente = h.heure;
+        continue;
+      }
+      const adjacente = debut !== null && h.heure === precedente + 1;
+      if (!adjacente) debut = h.heure;
+      const duree = h.heure - debut + 1;
+      if (duree >= 2 && (!meilleure || duree > meilleure.duree)) {
+        meilleure = { debut, fin: h.heure + 1, duree };
+      }
+      precedente = h.heure;
+    }
+    return meilleure;
+  }
+
+  const verte = plusLonguePlage((v) => v === "vert");
+  if (verte) return { verdict: "vert", ...verte };
+  const tenable = plusLonguePlage((v) => v !== "rouge");
+  if (tenable) return { verdict: "orange", ...tenable };
+  return { verdict: "rouge", debut: null, fin: null, duree: 0 };
+}
+
+/**
+ * Score d'un créneau = verdict de sa meilleure fenêtre sautable.
  *  - 2 h vertes consécutives           → vert
  *  - 2 h sautables (vert/orange) cons. → orange
  *  - sinon                             → rouge
  * @param {string[]} verdictsHoraires — verdicts des heures du créneau, dans l'ordre
  */
 export function scoreCreneau(verdictsHoraires) {
-  if (verdictsHoraires.length === 0) return "rouge";
-  if (verdictsHoraires.length === 1) return verdictsHoraires[0];
-  for (let i = 0; i < verdictsHoraires.length - 1; i++) {
-    if (verdictsHoraires[i] === "vert" && verdictsHoraires[i + 1] === "vert")
-      return "vert";
-  }
-  for (let i = 0; i < verdictsHoraires.length - 1; i++) {
-    if (verdictsHoraires[i] !== "rouge" && verdictsHoraires[i + 1] !== "rouge")
-      return "orange";
-  }
-  return "rouge";
+  return fenetreSautable(
+    verdictsHoraires.map((verdict, i) => ({ heure: i, verdict }))
+  ).verdict;
 }
 
 /** Pire des deux : utile pour le badge global d'un jour (meilleur créneau). */
@@ -149,21 +193,32 @@ export function meilleurVerdict(verdicts) {
 }
 
 /**
- * Niveau de confiance basé sur l'accord entre plusieurs modèles météo
- * indépendants pour le vent au sol (DWD ICON = primaire, + Météo-France
- * AROME sur J0-J3, + ECMWF IFS sur les 7 jours).
+ * Niveau de confiance basé sur deux facteurs :
+ *  1. l'accord entre modèles météo indépendants pour le vent au sol
+ *     (DWD ICON = primaire, + Météo-France AROME sur J0-J3,
+ *     + ECMWF IFS sur les 7 jours) ;
+ *  2. l'échéance — une prévision à J+6 ne vaut pas une prévision à J+1,
+ *     même si les modèles sont d'accord entre eux (ils peuvent l'être et
+ *     se tromper ensemble). On ajoute donc une pénalité par jour.
  * @param {number} ventPrimaire
  * @param {Array<{nom:string, vent:number|null|undefined}>} autres — modèles secondaires disponibles à cette heure
- * @returns {{niveau:string, ecart:number|null, nModeles:number}}
+ * @param {number} echeanceJours — 0 = aujourd'hui, 6 = J+6
+ * @returns {{niveau:string, ecart:number|null, nModeles:number, penalite:number}}
+ *   `ecart` reste l'écart réellement observé entre modèles (affichable) ;
+ *   le niveau, lui, est calculé sur l'écart + pénalité d'échéance.
  */
-export function niveauConfiance(ventPrimaire, autres = []) {
+export function niveauConfiance(ventPrimaire, autres = [], echeanceJours = 0) {
+  const C = SEUILS_COMMUNS;
+  const penalite = Math.max(0, echeanceJours - 1) * C.confiancePenaliteParJour;
   const ecarts = autres
     .filter((m) => m.vent != null && ventPrimaire != null)
     .map((m) => Math.abs(ventPrimaire - m.vent));
-  if (ecarts.length === 0) return { niveau: "unique", ecart: null, nModeles: 1 };
+  if (ecarts.length === 0) return { niveau: "unique", ecart: null, nModeles: 1, penalite };
   const ecart = Math.round(Math.max(...ecarts));
   const nModeles = ecarts.length + 1;
-  if (ecart <= SEUILS_COMMUNS.confianceHauteMax) return { niveau: "haute", ecart, nModeles };
-  if (ecart <= SEUILS_COMMUNS.confianceMoyenneMax) return { niveau: "moyenne", ecart, nModeles };
-  return { niveau: "faible", ecart, nModeles };
+  const effectif = ecart + penalite;
+  const niveau =
+    effectif <= C.confianceHauteMax ? "haute" :
+    effectif <= C.confianceMoyenneMax ? "moyenne" : "faible";
+  return { niveau, ecart, nModeles, penalite };
 }

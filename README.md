@@ -36,6 +36,32 @@ du club, avec les vents du sol jusqu'à l'altitude de largage (~4000 m).
   `scoring.js` et `ouverture.js` : calcul de Pâques, calendrier d'ouverture,
   verdicts météo, vent traversier, confiance multi-modèle. `npm test`.
 
+## v1.4 — outil de décision + refonte « instrument de vol »
+
+Détail complet dans [CHANGELOG.md](./CHANGELOG.md).
+
+- **Correction d'un faux vert** : un ciel totalement bouché (couverture
+  100 %) ressortait VERT pour tous les niveaux, sans aucune raison
+  affichée — il passait à travers la bande « partiellement couvert »
+  (30-75 %) et le plafond estimé (3000 m) franchissait le seuil de tous
+  les niveaux. Une couche compacte (≥ 85 % sur un étage) est maintenant
+  éliminatoire, avec un message distinct pour la couche moyenne, qui
+  contient l'altitude de largage. Les cirrus, eux, ne bloquent pas.
+- **Meilleur créneau en tête** : jour, fenêtre horaire précise et chiffres
+  clés, au lieu de cartes à comparer.
+- **Fenêtres horaires** (« 14h → 17h ») et **motif bloquant par jour**,
+  visibles sans ouvrir le détail.
+- **Spot / dérive estimée** : dérive en chute, sous voile, totale, et cap
+  à remonter depuis la zone de poser, calculés sur toute la colonne de
+  vent. Hauteur d'ouverture par niveau (FFP DT49).
+- **Tendance de la prévision** : ↗ s'améliore / ↘ se dégrade depuis la
+  dernière consultation.
+- **Confiance pondérée par l'échéance** : une prévision à J+6 ne vaut pas
+  une prévision à J+1, même si les modèles s'accordent.
+- **Thème sombre « planche de bord »**, variante claire automatique en
+  journée. Vert/ambre/rouge strictement réservés aux données : l'accent
+  interactif est bleu, plus rien ne concurrence le code couleur du verdict.
+
 ## Fiabilité v1.3 — seuils par brevet validés contre une source fédérale
 
 Vérification demandée explicitement : « valider les seuils suivant les brevets,
@@ -131,7 +157,11 @@ js/config.test.mjs        Tests (invariants des seuils par brevet)
 js/ouverture.js           Calendrier du club (pur, testable en Node)
 js/ouverture.test.mjs     Tests (Pâques, fériés, créneaux)
 js/scoring.js             Moteur « ça saute ? » (pur, testable en Node)
-js/scoring.test.mjs       Tests (verdicts, rafales, tendance, confiance)
+js/scoring.test.mjs       Tests (verdicts, rafales, nuages, fenêtres, confiance)
+js/spot.js                Estimation de dérive / spot (pur)
+js/spot.test.mjs          Tests (intégration du vent, caps, hypothèses)
+js/tendance.js            Évolution de la prévision entre 2 consultations (pur)
+js/tendance.test.mjs      Tests (amélioration / dégradation / stable)
 js/meteo.js               Fetch + parsing Open-Meteo (ICON + AROME + ECMWF)
 js/meteo.test.mjs         Tests (fetch simulé : timeout, échecs, fraîcheur)
 js/app.js                 UI et état

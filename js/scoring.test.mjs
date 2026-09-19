@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { scoreHeure, scoreCreneau, meilleurVerdict, ventPiste, plafondEstime, niveauConfiance } from "./scoring.js";
+import { scoreHeure, scoreCreneau, fenetreSautable, meilleurVerdict, ventPiste, plafondEstime, niveauConfiance } from "./scoring.js";
 
 const SEUILS_TANDEM = { ventMax: 28, plafondMin: 1500 };
 
@@ -122,6 +122,120 @@ test("meilleurVerdict privilégie le meilleur créneau du jour", () => {
   assert.equal(meilleurVerdict(["rouge", "orange", "rouge"]), "orange");
   assert.equal(meilleurVerdict(["rouge", "vert"]), "vert");
   assert.equal(meilleurVerdict(["rouge", "rouge"]), "rouge");
+});
+
+// --- Ciel bouché (régression : faux vert corrigé en v1.4.0) -------------
+
+test("Couche moyenne compacte (100 %) -> rouge, pas vert (avion ne peut pas larguer VFR)", () => {
+  // Avant v1.4.0 : la bande orange s'arrêtait à 75 % de couverture, donc
+  // 100 % passait à travers et ressortait VERT sans aucune raison.
+  const s = scoreHeure(heure({ nuagesMoyens: 100, nuagesHauts: 100 }), SEUILS_TANDEM);
+  assert.equal(s.verdict, "rouge");
+  assert.ok(s.raisons.some((r) => r.includes("largage")), s.raisons.join(" · "));
+});
+
+test("Couche basse compacte (95 %) -> rouge avec un message distinct", () => {
+  const s = scoreHeure(heure({ t2m: 20, pointRosee: 2, nuagesBas: 95 }), SEUILS_TANDEM);
+  assert.equal(s.verdict, "rouge");
+  assert.ok(s.raisons.some((r) => r.includes("couche basse")), s.raisons.join(" · "));
+});
+
+test("Ciel morcelé (50 % bas + 40 % moyen) -> orange, pas rouge : aucune couche n'est compacte", () => {
+  const s = scoreHeure(heure({ t2m: 25, pointRosee: 2, nuagesBas: 50, nuagesMoyens: 40 }), SEUILS_TANDEM);
+  assert.equal(s.verdict, "orange");
+  assert.ok(s.raisons.some((r) => r.includes("partiellement")));
+});
+
+test("Nuages hauts seuls (cirrus 100 %) -> vert : ils sont au-dessus de l'altitude de largage", () => {
+  const s = scoreHeure(heure({ nuagesHauts: 100 }), SEUILS_TANDEM);
+  assert.equal(s.verdict, "vert");
+});
+
+// --- Fenêtre sautable ---------------------------------------------------
+
+test("fenetreSautable : retient la plus longue plage verte et ses heures", () => {
+  const f = fenetreSautable([
+    { heure: 9, verdict: "orange" },
+    { heure: 10, verdict: "vert" },
+    { heure: 11, verdict: "vert" },
+    { heure: 12, verdict: "vert" },
+    { heure: 13, verdict: "rouge" },
+  ]);
+  assert.equal(f.verdict, "vert");
+  assert.equal(f.debut, 10);
+  assert.equal(f.fin, 13); // l'heure 12 couvre jusqu'à 13h
+  assert.equal(f.duree, 3);
+});
+
+test("fenetreSautable : pas de plage verte -> plus longue plage tenable en orange", () => {
+  const f = fenetreSautable([
+    { heure: 9, verdict: "rouge" },
+    { heure: 10, verdict: "orange" },
+    { heure: 11, verdict: "orange" },
+    { heure: 12, verdict: "rouge" },
+  ]);
+  assert.equal(f.verdict, "orange");
+  assert.equal(f.debut, 10);
+  assert.equal(f.fin, 12);
+});
+
+test("fenetreSautable : heures vertes isolées, jamais 2 consécutives -> rouge, pas de fenêtre", () => {
+  const f = fenetreSautable([
+    { heure: 9, verdict: "vert" },
+    { heure: 10, verdict: "rouge" },
+    { heure: 11, verdict: "vert" },
+  ]);
+  assert.equal(f.verdict, "rouge");
+  assert.equal(f.debut, null);
+});
+
+test("fenetreSautable : trou dans les heures -> pas de fenêtre à cheval sur le trou", () => {
+  const f = fenetreSautable([
+    { heure: 9, verdict: "vert" },
+    { heure: 14, verdict: "vert" },
+    { heure: 15, verdict: "vert" },
+  ]);
+  assert.equal(f.debut, 14);
+  assert.equal(f.duree, 2);
+});
+
+// --- Confiance pondérée par l'échéance ----------------------------------
+
+test("niveauConfiance : même accord entre modèles, la confiance baisse avec l'échéance", () => {
+  const modeles = [{ nom: "AROME", vent: 17 }, { nom: "ECMWF", vent: 16 }];
+  const proche = niveauConfiance(15, modeles, 0);
+  const lointaine = niveauConfiance(15, modeles, 6);
+  assert.equal(proche.niveau, "haute");
+  assert.equal(lointaine.niveau, "moyenne");
+  // L'écart affiché reste l'écart réellement observé
+  assert.equal(lointaine.ecart, 2);
+  assert.equal(lointaine.penalite, 10);
+});
+
+test("niveauConfiance : J+0 et J+1 ne sont pas pénalisés", () => {
+  const modeles = [{ nom: "ECMWF", vent: 16 }];
+  assert.equal(niveauConfiance(15, modeles, 0).penalite, 0);
+  assert.equal(niveauConfiance(15, modeles, 1).penalite, 0);
+});
+
+test("scoreHeure : au loin, un léger désaccord entre modèles suffit à plafonner le vert à orange", () => {
+  // À J+0 un écart de 4 km/h reste une confiance haute -> vert.
+  // À J+6 (pénalité +10) le même écart devient "faible" -> orange.
+  const modeles = { arome: { vent: 14 }, ecmwf: { vent: 12 } };
+  const proche = scoreHeure(heure({ vent10: 10, comparaisons: modeles, echeanceJours: 0 }), SEUILS_TANDEM);
+  const lointain = scoreHeure(heure({ vent10: 10, comparaisons: modeles, echeanceJours: 6 }), SEUILS_TANDEM);
+  assert.equal(proche.verdict, "vert");
+  assert.equal(lointain.verdict, "orange");
+});
+
+test("scoreHeure : au loin, des modèles parfaitement d'accord restent au vert", () => {
+  // Choix assumé : plafonner tout J+5/J+6 à orange rendrait inutile la
+  // fonction première de l'app (décider en début de semaine quel jour
+  // aller sauter). La pénalité dégrade la confiance, elle ne condamne pas
+  // l'échéance lointaine à elle seule.
+  const modeles = { arome: { vent: 11 }, ecmwf: { vent: 12 } };
+  const s = scoreHeure(heure({ vent10: 10, comparaisons: modeles, echeanceJours: 6 }), SEUILS_TANDEM);
+  assert.equal(s.verdict, "vert");
 });
 
 test("ventPiste : vent plein axe -> tout en face, rien en traversier", () => {

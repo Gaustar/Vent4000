@@ -4,6 +4,82 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [1.4.0] — 2026-09-19
+
+Refonte visuelle « instrument de vol » et passage d'un affichage de
+données à un outil de décision : l'app répond maintenant directement à
+« quand aller sauter ? » au lieu de présenter des cartes à comparer.
+
+### Corrigé (bug de sécurité : faux verts)
+
+- **Un ciel totalement bouché ressortait VERT pour tous les niveaux**, sans
+  aucune raison affichée. Deux causes cumulées : la bande « ciel
+  partiellement couvert » était calibrée 30-75 %, donc une couverture à
+  100 % passait à travers sans rien déclencher ; et `plafondEstime`
+  renvoie 3000 m pour une couche moyenne compacte, ce qui passe le seuil
+  de plafond de **tous** les niveaux (le plus strict, Élève AFF, est à
+  2800 m). Reproduit puis verrouillé par test.
+  Correction : une couche compacte (≥ 85 % sur un étage) est désormais
+  éliminatoire, avec un message distinct selon l'étage — la couche moyenne
+  d'Open-Meteo (~3-8 km) contient l'altitude de largage, donc « Couche
+  compacte à l'altitude de largage » ; en bas, « Ciel bouché (couche
+  basse) ». Le test se fait **par étage et non sur la somme** : 45 % bas
+  + 40 % moyen est un ciel morcelé (orange), pas un ciel bouché.
+  Les nuages **hauts** (cirrus, 8-15 km) restent volontairement non
+  bloquants : ils sont au-dessus de l'altitude de largage.
+
+### Ajouté
+
+- **Meilleur créneau en tête d'écran** : le verdict, le jour, la fenêtre
+  horaire précise et les chiffres clés (vent, rafales, plafond, confiance)
+  — la réponse avant le détail.
+- **Fenêtres horaires explicites** (`fenetreSautable`) : l'information
+  était calculée puis jetée (`scoreCreneau` ne renvoyait qu'une couleur).
+  On lit maintenant « 14h → 17h » au lieu de « Dimanche 🟢 ».
+- **Motif bloquant sur chaque jour**, en vue Semaine : plus besoin
+  d'ouvrir un jour pour savoir pourquoi il est rouge.
+- **Estimation de dérive / spot** (`js/spot.js`, nouveau) : intègre le
+  vent sur toute la colonne (sol → 80/120/180 m → 925/850/700/600 hPa)
+  pour estimer la dérive en chute, la dérive sous voile, la dérive totale
+  et le cap à remonter depuis la zone de poser. Hauteur d'ouverture prise
+  par niveau, elle aussi issue de la FFP DT49 (1200 m progression/brevet A,
+  850 m à partir du brevet B). Affichée avec ses hypothèses explicites.
+- **Tendance de la prévision** (`js/tendance.js`, nouveau) : « ↗ s'améliore »
+  / « ↘ se dégrade » par rapport à un instantané conservé en local, utile
+  quand on surveille un week-end depuis le jeudi. La comparaison n'est
+  faite que si l'instantané a au moins 4 h, sinon elle ne dit rien.
+- **Confiance pondérée par l'échéance** : +2 km/h d'écart fictif par jour
+  au-delà de J+1. À J+6, les modèles doivent s'accorder à 2 km/h près pour
+  rester en confiance « moyenne ». Choix assumé de ne **pas** plafonner
+  tout J+5/J+6 à orange : cela rendrait inutile la fonction première de
+  l'app (décider en début de semaine). La dégradation reste progressive.
+- Rafales affichées directement sur chaque heure de la timeline.
+
+### Refonte visuelle — « instrument de vol »
+
+- **Thème sombre** (planche de bord) par défaut, variante claire
+  automatique en journée pour rester lisible en plein soleil.
+- **Vert / ambre / rouge sont désormais réservés aux données.** L'accent
+  interactif passe de l'orange au bleu : l'ancien bandeau orange plein
+  « Briefing officiel du club » dominait l'écran et se lisait comme une
+  alerte alors que ce n'est qu'un lien — exactement le genre de bruit qui
+  fait douter d'un code couleur décisionnel.
+- Chiffres en IBM Plex Mono tabulaire (les colonnes ne dansent plus quand
+  une valeur passe de 9 à 10), titres en Barlow Condensed majuscule.
+- Vue Semaine en lignes scannables (pastille · jour · fenêtre · motif ·
+  tendance) au lieu de cartes empilées ; vue Jour réorganisée en blocs
+  distincts et étiquetés (verdict, heure par heure, cette heure-là, profil,
+  vent/piste, spot, détails).
+- Boussole enrichie : axe de piste, vent au sol (trait plein) et dérive
+  estimée (trait pointillé ambre).
+- Le niveau de pratique actif devient une puce cliquable dans l'en-tête.
+
+### Notes
+
+- Tests : 46 → 76 (nouveaux fichiers `spot.test.mjs`, `tendance.test.mjs`).
+- Cache du service worker en `vent4000-v8`, avec les deux nouveaux modules
+  dans le shell hors-ligne.
+
 ## [1.3.0] — 2026-09-19
 
 Validation des seuils de vent par brevet contre une source fédérale
