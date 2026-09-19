@@ -738,6 +738,37 @@ async function init() {
 
 init();
 
+// ------------------------------------------------------------
+// Service worker & mise à jour automatique
+//
+// L'app tourne aussi dans une TWA Android, qui garde la page vivante
+// entre deux ouvertures : fermer puis rouvrir l'app ne déclenche PAS de
+// nouvelle navigation. Sans les deux mécanismes ci-dessous, rien ne
+// vérifie jamais qu'une version plus récente est en ligne et l'app reste
+// figée indéfiniment sur la version mise en cache.
+// ------------------------------------------------------------
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js").catch(() => {});
+  const avaitUnControleur = !!navigator.serviceWorker.controller;
+  let rechargeEnCours = false;
+
+  // 2e temps : le nouveau service worker prend la main (skipWaiting +
+  // clients.claim) -> on recharge pour afficher réellement la nouvelle
+  // version. Au tout premier passage il n'y avait pas de contrôleur :
+  // dans ce cas on ne recharge pas, ce serait un rechargement inutile.
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!avaitUnControleur || rechargeEnCours) return;
+    rechargeEnCours = true;
+    location.reload();
+  });
+
+  // updateViaCache "none" : le script du service worker lui-même n'est
+  // jamais relu depuis le cache HTTP (max-age=600 sur GitHub Pages).
+  navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).then((reg) => {
+    // 1er temps : on cherche activement une mise à jour à chaque fois que
+    // l'app revient au premier plan — c'est le seul signal fiable dans une
+    // TWA, où la page peut ne jamais être rechargée.
+    const chercherMaj = () => { if (!document.hidden) reg.update().catch(() => {}); };
+    document.addEventListener("visibilitychange", chercherMaj);
+    chercherMaj();
+  }).catch(() => {});
 }

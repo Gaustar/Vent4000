@@ -4,7 +4,7 @@
 // avec repli sur la dernière prévision en cache (mode hors-ligne).
 // ============================================================
 
-const CACHE = "vent4000-v8";
+const CACHE = "vent4000-v9";
 const SHELL = [
   "./",
   "./index.html",
@@ -22,7 +22,16 @@ const SHELL = [
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
+  // `cache: "reload"` est indispensable : GitHub Pages sert le shell avec
+  // `Cache-Control: max-age=600`, donc un addAll classique peut piocher
+  // dans le cache HTTP du navigateur et remettre en cache l'ANCIENNE
+  // version sous le nouveau nom de cache — une mise à jour qui réussit
+  // mais n'installe rien de neuf.
+  e.waitUntil(
+    caches.open(CACHE).then((c) =>
+      c.addAll(SHELL.map((url) => new Request(url, { cache: "reload" })))
+    )
+  );
   self.skipWaiting();
 });
 
