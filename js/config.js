@@ -152,4 +152,4 @@ export const LIENS = {
   briefing: "https://pro.paraclubnamur.be/fr/meteo",
 };
 
-export const VERSION = "1.4.4";
+export const VERSION = "1.4.5";
