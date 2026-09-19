@@ -51,10 +51,10 @@ export const NIVEAUX_PRESSION = [
 // progression (25,2 km/h) : marge de sécurité déjà en place, non modifiée.
 // Tandem (28) n'est PAS couvert par cette règle (pas un brevet de
 // progression solo, le moniteur est aux commandes) : seuil laissé au
-// jugement DZ/matériel, inchangé. Brevet A (33) reste une interpolation
-// DZ raisonnable :
-// aucun chiffre fédéral explicite ne couvre ce palier précis (entre la
-// fin de progression à 7 m/s et le brevet B à 11 m/s).
+// jugement DZ/matériel, inchangé.
+// Brevet A (33) reste une interpolation DZ raisonnable : aucun chiffre
+// fédéral explicite ne couvre ce palier précis (entre la fin de
+// progression à 7 m/s et le brevet B à 11 m/s).
 //
 // Plafond nuageux min. : aucune source fédérale chiffrée trouvée (ni FFP,
 // ni club) — reste une estimation DZ, cohérente avec les hauteurs
@@ -73,12 +73,27 @@ export const NIVEAUX_PRESSION = [
 //   brevet C/D confirmé ≈ 10 kt (18 km/h).
 //
 // La décision finale appartient toujours au club et aux moniteurs.
+//
+// hauteurOuverture : hauteur d'ouverture (m AGL) utilisée pour estimer la
+// dérive sous voile. Chiffres issus de la même source FFP DT49 :
+//   « Hauteur minimale d'ouverture 1200 mètres » (progression / brevet A),
+//   « 1000 mètres avant l'obtention du BPA », « 850 mètres après ».
+// Élève et tandem : hauteur pratiquée, plus haute que le minimum légal
+// (la DT49 cite « Ouverture à 1500 mètres » au niveau 2 de progression).
 export const NIVEAUX_PRATIQUE = {
-  tandem:  { label: "Tandem",       ventMax: 28, plafondMin: 1500, ecartRafalesOrange: 9 },
-  aff:     { label: "Élève AFF",    ventMax: 22, plafondMin: 2800, ecartRafalesOrange: 9 },
-  brevetA: { label: "Brevet A",     ventMax: 33, plafondMin: 1400, ecartRafalesOrange: 13 },
-  brevetB: { label: "Brevet B",     ventMax: 39, plafondMin: 1100, ecartRafalesOrange: 13 },
-  brevetCD:{ label: "Brevet C/D",   ventMax: 46, plafondMin: 1100, ecartRafalesOrange: 18 },
+  tandem:  { label: "Tandem",       ventMax: 28, plafondMin: 1500, ecartRafalesOrange: 9,  hauteurOuverture: 1500 },
+  aff:     { label: "Élève AFF",    ventMax: 22, plafondMin: 2800, ecartRafalesOrange: 9,  hauteurOuverture: 1500 },
+  brevetA: { label: "Brevet A",     ventMax: 33, plafondMin: 1400, ecartRafalesOrange: 13, hauteurOuverture: 1200 },
+  brevetB: { label: "Brevet B",     ventMax: 39, plafondMin: 1100, ecartRafalesOrange: 13, hauteurOuverture: 850 },
+  brevetCD:{ label: "Brevet C/D",   ventMax: 46, plafondMin: 1100, ecartRafalesOrange: 18, hauteurOuverture: 850 },
+};
+
+// Hypothèses de vol pour l'estimation de dérive / spot (js/spot.js).
+// ⚠ Valeurs moyennes typiques, pas des mesures : l'estimation sert à
+// anticiper l'ordre de grandeur de la dérive, pas à remplacer le largueur.
+export const VOL = {
+  tauxChuteVoile: 5,     // m/s — taux de chute moyen sous voile ram-air
+  vitesseChuteLibre: 55, // m/s (~200 km/h) — chute ventre stabilisée
 };
 
 // Niveaux "au-dessus du sol" (AGL direct, pas de conversion nécessaire) —
@@ -94,11 +109,26 @@ export const SEUILS_COMMUNS = {
   capeRouge: 800,        // J/kg — risque orageux
   visibiliteMin: 5000,   // m — VFR
   ventOrangeRatio: 0.8,  // vent > 80 % du seuil → orange
-  nuagesOrangeMin: 30,   // % couverture basse+moyenne combinée
-  nuagesOrangeMax: 75,
+  nuagesOrangeMin: 30,   // % couverture basse+moyenne combinée → orange
+  // Une couche compacte (≥ 85 % sur UN étage) bouche le ciel : l'avion ne
+  // peut pas larguer en VFR à travers. Testé par étage et non sur la somme
+  // des couches : 45 % bas + 40 % moyen, c'est un ciel morcelé (orange),
+  // pas un ciel bouché. La couche « moyenne » d'Open-Meteo (~3-8 km)
+  // contient l'altitude de largage (4000 m) → message dédié.
+  // ⚠ Avant la v1.4.0, un ciel 100 % couvert passait à travers la bande
+  // orange (30-75 %) et ressortait VERT, sans aucune raison affichée.
+  nuagesBoucheRouge: 85,
   confianceHauteMax: 5,  // km/h d'écart entre modèles → confiance haute
   confianceMoyenneMax: 12, // km/h d'écart → confiance moyenne ; au-delà = faible
+  // Pénalité d'échéance : la qualité d'une prévision se dégrade avec le
+  // délai. On ajoute ces km/h fictifs à l'écart entre modèles par jour
+  // au-delà de J+1, ce qui fait naturellement chuter la confiance au loin
+  // (et, via scoreHeure, plafonne les verdicts lointains à orange).
+  confiancePenaliteParJour: 2,
   tendanceHausseOrange: 8, // km/h de hausse d'une heure à l'autre → orange
+  // Écart de vent (km/h) au-delà duquel on parle d'évolution de la
+  // prévision entre deux consultations (js/tendance.js).
+  tendancePrevisionVent: 4,
 };
 
 // Saison & créneaux du club
@@ -122,4 +152,4 @@ export const LIENS = {
   briefing: "https://pro.paraclubnamur.be/fr/meteo",
 };
 
-export const VERSION = "1.3.0";
+export const VERSION = "1.4.0";

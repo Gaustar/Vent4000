@@ -1,29 +1,32 @@
 <!DOCTYPE html>
-<html lang="fr" data-theme="jour">
+<html lang="fr" data-theme="nuit">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Vent4000 — Ça saute à Namur ?</title>
-  <meta name="description" content="Météo parachutisme du Paraclub de Namur (EBNM) : verdict par jour d'ouverture, vents du sol à 4000 m.">
-  <meta name="theme-color" content="#122036">
+  <meta name="description" content="Météo parachutisme du Paraclub de Namur (EBNM) : verdict par jour d'ouverture, vents du sol à 4000 m, dérive estimée.">
+  <meta name="theme-color" content="#0B1016">
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=Barlow:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./css/style.css">
 </head>
 <body>
 
   <header class="entete">
-    <div class="entete-titre">
+    <div class="entete-marque">
       <h1>Vent<span>4000</span></h1>
       <p class="entete-sous">Paraclub de Namur · EBNM</p>
     </div>
     <div class="entete-actions">
+      <button id="btn-niveau" class="puce-niveau" title="Changer de niveau">
+        <span class="puce-label">Niveau</span>
+        <strong id="niveau-actif">Tandem</strong>
+      </button>
       <a id="lien-gmaps" class="btn-icone" target="_blank" rel="noopener" title="Itinéraire Google Maps" aria-label="Itinéraire Google Maps">🗺️</a>
-      <a id="lien-waze" class="btn-icone" target="_blank" rel="noopener" title="Itinéraire Waze" aria-label="Itinéraire Waze">🚗</a>
       <button id="btn-reglages" class="btn-icone" title="Réglages" aria-label="Réglages">⚙️</button>
     </div>
   </header>
@@ -35,78 +38,120 @@
       <p>Lecture du ciel au-dessus de Temploux…</p>
     </div>
 
-    <!-- Vue Semaine -->
+    <!-- ============ Vue Semaine ============ -->
     <section id="vue-semaine" hidden>
-      <a id="lien-briefing" class="bandeau-briefing" target="_blank" rel="noopener">
-        📋 <strong>Briefing officiel du club</strong> — vérifier avant de partir <span>↗</span>
+
+      <!-- Verdict de tête : la réponse, avant tout le reste -->
+      <h2 class="etiquette">Meilleur créneau — 7 prochains jours</h2>
+      <article id="hero" class="hero">
+        <div class="hero-haut">
+          <span class="hero-pastille" aria-hidden="true"></span>
+          <div>
+            <p id="hero-verdict" class="hero-verdict"></p>
+            <p id="hero-quand" class="hero-quand"></p>
+          </div>
+        </div>
+        <div id="hero-stats" class="stats"></div>
+        <p id="hero-note" class="hero-note"></p>
+      </article>
+
+      <h2 class="etiquette">Jours d'ouverture</h2>
+      <div id="jours" class="jours"></div>
+
+      <a id="lien-briefing" class="lien-bloc" target="_blank" rel="noopener">
+        <span class="lien-bloc-texte"><strong>Briefing officiel du club</strong> — à vérifier avant de partir</span>
+        <span class="lien-bloc-fleche" aria-hidden="true">↗</span>
       </a>
-      <div class="bandeau-niveau">
-        Seuils « <strong id="niveau-actif">Tandem</strong> » —
-        <button id="lien-changer-niveau" class="lien" onclick="document.getElementById('btn-reglages').click()">changer</button>
-      </div>
-      <h2 class="titre-section">Jours d'ouverture — 7 prochains jours</h2>
-      <div class="jours"></div>
+
       <p id="maj" class="note-maj"></p>
     </section>
 
-    <!-- Vue Jour -->
+    <!-- ============ Vue Jour ============ -->
     <section id="vue-jour" hidden>
       <button id="btn-retour" class="btn-retour">← Semaine</button>
+
       <div class="jour-entete">
         <h2 id="jour-titre"></h2>
         <p id="jour-soustitre" class="sous-titre"></p>
         <p id="actuel" class="actuel" hidden></p>
-        <div id="jour-creneaux" class="creneaux"></div>
-        <a id="lien-briefing-jour" class="lien-briefing-compact" target="_blank" rel="noopener">📋 Briefing officiel du club ↗</a>
       </div>
 
-      <h3 class="titre-section">Heure par heure <span class="hint">(vent sol en km/h)</span></h3>
+      <article id="jour-verdict" class="hero hero-compact">
+        <div class="hero-haut">
+          <span class="hero-pastille" aria-hidden="true"></span>
+          <div>
+            <p id="jour-verdict-texte" class="hero-verdict"></p>
+            <p id="jour-verdict-quand" class="hero-quand"></p>
+          </div>
+        </div>
+        <div id="jour-creneaux" class="creneaux"></div>
+      </article>
+
+      <h3 class="etiquette">Heure par heure <span class="hint">vent / rafales au sol, km/h</span></h3>
       <div id="timeline" class="timeline" role="tablist"></div>
 
-      <ul id="raisons" class="raisons"></ul>
-      <p id="confiance" class="confiance"></p>
+      <div class="bloc">
+        <h3 class="etiquette">Cette heure-là</h3>
+        <ul id="raisons" class="raisons"></ul>
+        <p id="confiance" class="confiance"></p>
+      </div>
 
-      <h3 class="titre-section">Profil du vent — sol → largage</h3>
-      <p class="hint-profil">ICON-D2 (DWD) · niveaux 80-180 m + 925-600 hPa</p>
+      <h3 class="etiquette">Profil du vent <span class="hint">sol → largage</span></h3>
       <div id="profil" class="profil"></div>
 
-      <div class="piste-bloc">
-        <svg id="boussole" viewBox="0 0 120 120" width="120" height="120" aria-label="Boussole : axe de piste et vent au sol"></svg>
-        <div class="piste-infos">
-          <h3 class="titre-section">Vent / piste</h3>
-          <p id="crosswind"></p>
+      <div class="bloc">
+        <h3 class="etiquette">Vent / piste</h3>
+        <div class="piste-bloc">
+          <svg id="boussole" viewBox="0 0 120 120" width="128" height="128" aria-label="Boussole : axe de piste, vent au sol et dérive"></svg>
+          <div id="crosswind" class="piste-infos"></div>
         </div>
       </div>
 
-      <h3 class="titre-section">Détails</h3>
+      <div class="bloc">
+        <h3 class="etiquette">Spot — dérive estimée</h3>
+        <div id="spot" class="stats"></div>
+        <p class="note-hypotheses" id="spot-note"></p>
+      </div>
+
+      <h3 class="etiquette">Détails</h3>
       <div id="details" class="details"></div>
+
+      <a id="lien-briefing-jour" class="lien-bloc" target="_blank" rel="noopener">
+        <span class="lien-bloc-texte"><strong>Briefing officiel du club</strong></span>
+        <span class="lien-bloc-fleche" aria-hidden="true">↗</span>
+      </a>
     </section>
 
-    <!-- Vue Réglages -->
+    <!-- ============ Vue Réglages ============ -->
     <section id="vue-reglages" hidden>
       <button id="btn-reglages-retour" class="btn-retour">← Semaine</button>
-      <h2>Réglages</h2>
+      <h2 class="titre-vue">Réglages</h2>
 
-      <label class="champ">
-        <span>Niveau de pratique</span>
-        <select id="reglage-niveau"></select>
-      </label>
+      <div class="bloc">
+        <label class="champ">
+          <span>Niveau de pratique</span>
+          <select id="reglage-niveau"></select>
+        </label>
 
-      <label class="champ">
-        <span>Vent max au sol (km/h)</span>
-        <input id="reglage-vent" type="number" min="5" max="60" step="1" inputmode="numeric">
-      </label>
+        <label class="champ">
+          <span>Vent max au sol <em>km/h</em></span>
+          <input id="reglage-vent" type="number" min="5" max="60" step="1" inputmode="numeric">
+        </label>
 
-      <label class="champ">
-        <span>Plafond minimum (m)</span>
-        <input id="reglage-plafond" type="number" min="300" max="4000" step="100" inputmode="numeric">
-      </label>
+        <label class="champ">
+          <span>Plafond minimum <em>m</em></span>
+          <input id="reglage-plafond" type="number" min="300" max="4000" step="100" inputmode="numeric">
+        </label>
 
-      <button id="reglage-reset" class="btn secondaire">Revenir aux seuils du niveau</button>
+        <button id="reglage-reset" class="btn secondaire">Revenir aux seuils du niveau</button>
+      </div>
 
       <p class="avertissement">
-        ⚠ Seuils <strong>indicatifs</strong>, inspirés des références internationales (USPA).
-        La décision de sauter appartient toujours au Paraclub et à tes moniteurs.
+        ⚠ Seuils <strong>indicatifs</strong>. Les valeurs par brevet sont
+        alignées sur la directive technique FFP n°49 (le brevet B est plafonné
+        à 11 m/s), sauf Brevet C/D et Tandem qui relèvent du jugement du club.
+        <strong>La décision de sauter appartient toujours au Paraclub et à tes
+        moniteurs.</strong>
       </p>
     </section>
   </main>
