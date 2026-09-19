@@ -748,15 +748,24 @@ init();
 // figée indéfiniment sur la version mise en cache.
 // ------------------------------------------------------------
 if ("serviceWorker" in navigator) {
-  const avaitUnControleur = !!navigator.serviceWorker.controller;
+  // Suivi du contrôleur courant. À la toute première visite il n'y en a
+  // pas : la première prise de contrôle ne doit pas recharger (la page
+  // affiche déjà la bonne version). En revanche tout changement SUIVANT
+  // signifie qu'une nouvelle version vient de s'activer — y compris dans
+  // la même session, d'où le fait de réaffecter la variable plutôt que de
+  // figer un booléen au chargement.
+  let controleurConnu = navigator.serviceWorker.controller;
   let rechargeEnCours = false;
 
   // 2e temps : le nouveau service worker prend la main (skipWaiting +
   // clients.claim) -> on recharge pour afficher réellement la nouvelle
-  // version. Au tout premier passage il n'y avait pas de contrôleur :
-  // dans ce cas on ne recharge pas, ce serait un rechargement inutile.
+  // version.
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (!avaitUnControleur || rechargeEnCours) return;
+    if (!controleurConnu) {
+      controleurConnu = navigator.serviceWorker.controller;
+      return;
+    }
+    if (rechargeEnCours) return;
     rechargeEnCours = true;
     location.reload();
   });
@@ -764,11 +773,24 @@ if ("serviceWorker" in navigator) {
   // updateViaCache "none" : le script du service worker lui-même n'est
   // jamais relu depuis le cache HTTP (max-age=600 sur GitHub Pages).
   navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).then((reg) => {
-    // 1er temps : on cherche activement une mise à jour à chaque fois que
-    // l'app revient au premier plan — c'est le seul signal fiable dans une
-    // TWA, où la page peut ne jamais être rechargée.
-    const chercherMaj = () => { if (!document.hidden) reg.update().catch(() => {}); };
+    // 1er temps : on cherche activement une mise à jour chaque fois que
+    // l'app revient au premier plan — seul signal fiable dans une TWA, où
+    // la page peut ne jamais être rechargée. On écoute trois événements
+    // car selon les versions d'Android et de Chrome, la reprise d'une TWA
+    // ne déclenche pas toujours le même : visibilitychange (cas courant),
+    // pageshow (retour depuis le bfcache), focus (reprise de la fenêtre).
+    let derniereVerif = 0;
+    const chercherMaj = () => {
+      if (document.hidden) return;
+      // Garde-fou : pas plus d'une vérification par minute, ces trois
+      // événements pouvant se déclencher ensemble sur une même reprise.
+      if (Date.now() - derniereVerif < 60000) return;
+      derniereVerif = Date.now();
+      reg.update().catch(() => {});
+    };
     document.addEventListener("visibilitychange", chercherMaj);
+    window.addEventListener("pageshow", chercherMaj);
+    window.addEventListener("focus", chercherMaj);
     chercherMaj();
   }).catch(() => {});
 }
