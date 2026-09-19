@@ -4,6 +4,79 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [1.3.0] — 2026-09-19
+
+Validation des seuils de vent par brevet contre une source fédérale
+primaire, à la demande explicite de l'utilisateur ("vérifie et valide les
+seuils suivant les brevets, comme le font les DZ avant d'imposer une
+limite"). Démarche : identifier le document fédéral le plus pertinent
+disponible, lire les chiffres exacts, comparer à ce que l'app appliquait
+déjà, et documenter chaque écart.
+
+### Source consultée
+
+[FFP (Fédération Française de Parachutisme) — Directive Technique n°49,
+modifiée le 15/04/2025](https://www.ffp.asso.fr/wp-content/uploads/2025/04/Directive-Technique-49-modifiee-15-avril-2025.pdf)
+(36 pages, "Méthodes d'enseignement, brevets fédéraux"). Choisie parce
+qu'elle utilise exactement la même nomenclature de brevets (A/B/C/D) que
+celle déjà en place dans l'app, historiquement partagée par le
+parachutisme francophone. Le Paraclub de Namur n'apparaît pas comme
+membre FFP confirmé (il dépend a priori de la FWCP — Fédération Wallonne
+des Clubs de Parachutisme, basée à Spa — dont le règlement technique
+propre n'a pas pu être consulté en ligne) : ces chiffres sont donc la
+**meilleure référence trouvée, pas une confirmation officielle du club**.
+
+Citations exactes extraites du PDF (`pdftotext`, vérifiées ligne par
+ligne, pas de résumé IA intermédiaire pour les chiffres retenus) :
+- p.5, module "Aptitudes sous voile", tant que non validé (= pendant toute
+  la progression jusqu'au brevet A inclus) : *"Vent au sol inférieur ou
+  égal à 7 m/s"* = 25,2 km/h.
+- p.6-7, brevet B (module Bv + conditions d'obtention) : *"Limite maximale
+  de vent au sol : 11 m/s"* = 39,6 km/h.
+- p.15, BPA (Brevet de Parachutiste Autonome, prérequis des brevets C et
+  D) : *"Limite maximale de vent au sol : 11 m/s"* — même chiffre.
+- Sections brevet C (p.18) et brevet D (p.20) : **aucun chiffre de vent
+  n'y est donné** — 11 m/s reste le plafond le plus élevé explicitement
+  écrit dans tout le document.
+- Aucune mention de plafond nuageux (plafond/nuage/visibilité) chiffrée
+  nulle part dans le document, quel que soit le brevet.
+
+### Corrigé
+
+- **Brevet B séparé de C/D et aligné sur le plafond fédéral documenté** :
+  `ventMax` 46 → **39 km/h** (11 m/s arrondi à l'entier inférieur — un
+  seuil de sécurité ne s'arrondit jamais vers le haut). Avant cette
+  correction, un titulaire du seul brevet B pouvait recevoir un verdict
+  vert jusqu'à 46 km/h, soit 6,4 km/h au-dessus du plafond que la FFP fixe
+  explicitement pour ce niveau (et pour le BPA, prérequis de C/D). Brevet
+  C/D conserve 46 km/h : aucun chiffre fédéral ne le couvre au-delà du BPA,
+  la valeur reste une estimation DZ à confirmer par le club — mais elle ne
+  s'applique plus, à tort, aux détenteurs du seul brevet B.
+- `plafondMin` du brevet B aligné sur brevet C/D (1100 m, au lieu du
+  1400 m de brevet A) : la FFP documente une hauteur d'ouverture minimale
+  qui passe justement à 850 m à l'obtention du brevet B (1200 m avant,
+  1000 m avant BPA) — cohérence conservée entre plafond nuageux estimé et
+  hauteur d'ouverture réglementaire.
+
+### Confirmé sans changement
+
+- Élève AFF (22 km/h) : déjà sous le plafond fédéral de progression
+  (25,2 km/h) — marge de sécurité volontaire, non touchée.
+- Tandem (28 km/h) : hors périmètre de cette règle FFP (pas un brevet de
+  progression solo, moniteur aux commandes) — seuil DZ/matériel inchangé.
+- Brevet A (33 km/h) : aucun chiffre fédéral explicite pour ce palier
+  précis (entre la fin de progression à 7 m/s et le brevet B à 11 m/s) —
+  interpolation DZ raisonnable, non contredite par la source consultée.
+- Plafonds nuageux minimums (hors brevet B) : aucune source chiffrée
+  trouvée, valeurs DZ inchangées.
+
+### Ce qui reste à faire confirmer par le club
+
+- Le seuil Brevet C/D (46 km/h) n'est adossé à aucun texte fédéral
+  identifié — c'est le point le plus incertain de cette validation.
+- Confirmer si le Paraclub de Namur applique effectivement le règlement
+  FFP/FWCP ou un barème interne différent.
+
 ## [1.2.0] — 2026-09-19
 
 Revue de fiabilité complète du moteur de décision, à la demande de

@@ -22,20 +22,63 @@ export const NIVEAUX_PRESSION = [
 ];
 
 // Seuils par niveau de pratique (vent en km/h, plafond en m AGL)
-// ⚠ Valeurs INDICATIVES (références USPA SIM / pratiques DZ internationales,
-// cf. sources dans README §Fiabilité). La décision finale appartient
-// toujours au club et aux moniteurs.
+//
+// ⚠ Vent max sol — vérifié le 2026-09-19 contre la source fédérale la plus
+// pertinente trouvée : FFP (Fédération Française de Parachutisme),
+// *Directive Technique n°49, modifiée le 15/04/2025* (même nomenclature de
+// brevets A/B/C/D que la Belgique francophone ; à confirmer malgré tout
+// auprès de la FWCP — Fédération Wallonne des Clubs de Parachutisme,
+// dont dépend le Paraclub de Namur — dont le règlement technique propre
+// n'a pas pu être consulté en ligne). Citations exactes :
+//   - Progression jusqu'au brevet A (module « Aptitudes sous voile » non
+//     validé) : « Vent au sol inférieur ou égal à 7 m/s » = 25,2 km/h.
+//   - Brevet B (module Bv + conditions d'obtention) ET Brevet de
+//     Parachutiste Autonome/BPA (prérequis des brevets C et D) :
+//     « Limite maximale de vent au sol : 11 m/s » = 39,6 km/h — c'est le
+//     plafond le plus élevé explicitement écrit dans tout le document,
+//     y compris pour les sections brevet C et brevet D (aucun chiffre
+//     supérieur n'y est donné).
+// D'où la correction suivante : le brevet B (et le BPA, prérequis de C/D)
+// est maintenant seul à hériter de ce plafond documenté (39 km/h, arrondi
+// à l'entier inférieur — on n'arrondit jamais un seuil de sécurité vers le
+// haut), au lieu d'être mélangé avec C/D à 46 km/h comme avant (v1.2.0) :
+// un brevet B seul aurait alors été autorisé 6+ km/h au-dessus du plafond
+// fédéral documenté pour son niveau. Brevet C/D conserve 46 km/h : aucun
+// chiffre fédéral explicite ne les concerne au-delà du BPA (autonomie
+// complète), et cette valeur reste dans la fourchette "expérimenté"
+// généralement observée (cf. README §Sources) — à valider par le club.
+// Élève AFF (22) reste volontairement sous le plafond fédéral de
+// progression (25,2 km/h) : marge de sécurité déjà en place, non modifiée.
+// Tandem (28) n'est PAS couvert par cette règle (pas un brevet de
+// progression solo, le moniteur est aux commandes) : seuil laissé au
+// jugement DZ/matériel, inchangé. Brevet A (33) reste une interpolation
+// DZ raisonnable :
+// aucun chiffre fédéral explicite ne couvre ce palier précis (entre la
+// fin de progression à 7 m/s et le brevet B à 11 m/s).
+//
+// Plafond nuageux min. : aucune source fédérale chiffrée trouvée (ni FFP,
+// ni club) — reste une estimation DZ, cohérente avec les hauteurs
+// d'ouverture minimales qui, elles, sont documentées par la FFP et
+// décroissent avec l'expérience (1200 m en progression/brevet A → 1000 m
+// avant BPA → 850 m après BPA/brevet B) : plus l'ouverture peut être basse,
+// moins il faut de plafond dégagé au-dessus. Brevet B est donc aligné sur
+// brevet C/D (1100 m) plutôt que sur brevet A (1400 m), puisque c'est au
+// brevet B que la hauteur d'ouverture minimale documentée passe à 850 m.
 //
 // ecartRafalesOrange : écart rafale/moyenne (km/h) à partir duquel on
 // dégrade le verdict — un jumper expérimenté tolère un "spread" plus large
-// qu'un élève (cf. Skydivemag, "Winds Limits Part 1") :
-//   élève/tandem ≈ 5 kt (9 km/h) · licencié A ≈ 7 kt (13 km/h) ·
-//   B/C/D confirmé ≈ 10 kt (18 km/h).
+// qu'un élève (cf. Skydivemag, "Winds Limits Part 1", pas de source
+// fédérale chiffrée ici) :
+//   élève/tandem ≈ 5 kt (9 km/h) · brevet A/B ≈ 7 kt (13 km/h) ·
+//   brevet C/D confirmé ≈ 10 kt (18 km/h).
+//
+// La décision finale appartient toujours au club et aux moniteurs.
 export const NIVEAUX_PRATIQUE = {
-  tandem: { label: "Tandem",       ventMax: 28, plafondMin: 1500, ecartRafalesOrange: 9 },
-  aff:    { label: "Élève AFF",    ventMax: 22, plafondMin: 2800, ecartRafalesOrange: 9 },
-  brevetA:{ label: "Brevet A",     ventMax: 33, plafondMin: 1400, ecartRafalesOrange: 13 },
-  brevetBCD:{ label: "Brevet B/C/D", ventMax: 46, plafondMin: 1100, ecartRafalesOrange: 18 },
+  tandem:  { label: "Tandem",       ventMax: 28, plafondMin: 1500, ecartRafalesOrange: 9 },
+  aff:     { label: "Élève AFF",    ventMax: 22, plafondMin: 2800, ecartRafalesOrange: 9 },
+  brevetA: { label: "Brevet A",     ventMax: 33, plafondMin: 1400, ecartRafalesOrange: 13 },
+  brevetB: { label: "Brevet B",     ventMax: 39, plafondMin: 1100, ecartRafalesOrange: 13 },
+  brevetCD:{ label: "Brevet C/D",   ventMax: 46, plafondMin: 1100, ecartRafalesOrange: 18 },
 };
 
 // Niveaux "au-dessus du sol" (AGL direct, pas de conversion nécessaire) —
@@ -79,4 +122,4 @@ export const LIENS = {
   briefing: "https://pro.paraclubnamur.be/fr/meteo",
 };
 
-export const VERSION = "1.2.0";
+export const VERSION = "1.3.0";
