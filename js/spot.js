@@ -50,6 +50,33 @@ export function profilVent(h) {
 }
 
 /**
+ * Vitesse du vent (km/h) à une altitude AGL donnée, par interpolation
+ * vectorielle du profil. Exposée parce que le verdict s'en sert : le vent
+ * à la hauteur d'ouverture décide si une voile peut encore pénétrer face
+ * au vent (cf. scoring.js). Jusqu'à la v1.5.0 toute la colonne de vent
+ * était affichée et servait au spot, mais ne pesait rien dans le go/no-go.
+ * @returns {number|null} km/h, ou null si le profil est vide
+ */
+export function ventAAltitude(profil, agl) {
+  if (!profil?.length) return null;
+  if (agl <= profil[0].agl) return profil[0].vent;
+  if (agl >= profil[profil.length - 1].agl) return profil[profil.length - 1].vent;
+  for (let i = 1; i < profil.length; i++) {
+    const a = profil[i - 1];
+    const b = profil[i];
+    if (agl <= b.agl) {
+      const t = (agl - a.agl) / (b.agl - a.agl);
+      const va = vecteur(a.vent, a.dir);
+      const vb = vecteur(b.vent, b.dir);
+      const est = va.est + (vb.est - va.est) * t;
+      const nord = va.nord + (vb.nord - va.nord) * t;
+      return Math.hypot(est, nord) * 3.6;
+    }
+  }
+  return profil[profil.length - 1].vent;
+}
+
+/**
  * Dérive entre deux altitudes, à taux de chute constant.
  * @param {Array<{agl,vent,dir}>} profil — trié par altitude croissante
  * @param {number} bas — altitude basse (m AGL)

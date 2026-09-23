@@ -69,21 +69,52 @@ export function dansSaison(date) {
 }
 
 /**
+ * Dernier dimanche d'octobre : fin de l'heure d'été en Europe, et date à
+ * laquelle le club passe en journées continues (cf. OUVERTURE dans
+ * config.js). Le 31 octobre est le dernier jour possible du mois ; on
+ * recule jusqu'au dimanche.
+ */
+export function changementHeureOctobre(annee) {
+  const d = new Date(annee, 9, 31); // 9 = octobre
+  d.setDate(31 - d.getDay());
+  return d;
+}
+
+/**
+ * Journées continues (un seul créneau 8h30 → coucher) à partir du
+ * changement d'heure de fin octobre, d'après la page formation du club :
+ * « À partir de fin octobre (avec le changement d'heure), les journées
+ * sont continues, de 8h30 jusqu'au coucher du soleil. »
+ */
+export function journeeContinue(date) {
+  return date >= changementHeureOctobre(date.getFullYear());
+}
+
+/**
  * Statut d'ouverture d'une date.
  * @returns {null | {type:"weekend"|"ferie"|"vendredi", creneaux:[{id,label,debut,fin}]}}
  *   Les heures `debut`/`fin` sont décimales locales ; `fin: null` = coucher du soleil.
+ *   `debut` est l'heure du PREMIER SAUT (9h00), pas l'ouverture du club
+ *   (8h30) : scorer 8h-9h proposait une fenêtre sans séance de saut.
  */
 export function statutOuverture(date) {
   if (!dansSaison(date)) return null;
   const dow = date.getDay(); // 0 = dimanche … 6 = samedi
   const ferie = estFerie(date);
-  const { heureOuverture, heureSplit, heureVendredi, vendrediDebutMois, vendrediFinMois } = OUVERTURE;
+  const { heurePremierSaut, heureSplit, heureVendredi, vendrediDebutMois, vendrediFinMois } = OUVERTURE;
 
   if (dow === 0 || dow === 6 || ferie) {
+    const type = ferie && dow !== 0 && dow !== 6 ? "ferie" : "weekend";
+    if (journeeContinue(date)) {
+      return {
+        type,
+        creneaux: [{ id: "journee", label: "Journée continue", debut: heurePremierSaut, fin: null }],
+      };
+    }
     return {
-      type: ferie && dow !== 0 && dow !== 6 ? "ferie" : "weekend",
+      type,
       creneaux: [
-        { id: "matin", label: "Matin", debut: heureOuverture, fin: heureSplit },
+        { id: "matin", label: "Matin", debut: heurePremierSaut, fin: heureSplit },
         { id: "aprem", label: "Après-midi", debut: heureSplit, fin: null },
       ],
     };

@@ -49,7 +49,7 @@ export function urlMeteoFrance() {
   const params = new URLSearchParams({
     latitude: DZ.lat,
     longitude: DZ.lon,
-    hourly: "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
+    hourly: "wind_speed_10m,wind_gusts_10m",
     models: "meteofrance_seamless",
     timezone: "Europe/Brussels",
     wind_speed_unit: "kmh",
@@ -63,7 +63,7 @@ export function urlEcmwf() {
   const params = new URLSearchParams({
     latitude: DZ.lat,
     longitude: DZ.lon,
-    hourly: "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
+    hourly: "wind_speed_10m,wind_gusts_10m",
     models: "ecmwf_ifs025",
     timezone: "Europe/Brussels",
     wind_speed_unit: "kmh",
@@ -102,7 +102,7 @@ function dateReponse(rep) {
  *   Heure = { iso, heure, vent10, rafales10, direction10, t2m, pointRosee,
  *             precip, probaPluie, nuagesBas, nuagesMoyens, nuagesHauts,
  *             visibilite, cape, niveaux:{600:{...}}, niveauxAGL:{80:{...}},
- *             comparaisons: { arome: {vent,direction}|null, ecmwf: {vent,direction}|null } }
+ *             comparaisons: { arome: {vent,rafales}|null, ecmwf: {vent,rafales}|null } }
  *   `recupereLe` reflète la date **réelle** de la réponse (en-tête HTTP),
  *   pas l'heure locale de l'appareil : si le service worker a servi une
  *   réponse de secours en cache (hors-ligne), `recupereLe` reste celle du
@@ -136,10 +136,26 @@ export async function chargerMeteo() {
     if (rep.status !== "fulfilled" || !rep.value.ok) return null;
     try {
       const c = await rep.value.json();
+      // `wind_gusts_10m` était demandé dans l'URL depuis la v1.1 mais
+      // jamais lu : la confiance ne comparait que le vent MOYEN, alors que
+      // c'est la RAFALE qui élimine une heure (cf. scoring.js). L'app
+      // pouvait donc afficher « confiance haute » sur un verdict décidé
+      // par une variable que les modèles n'avaient jamais confrontée.
+      //
+      // `wind_direction_10m` n'est en revanche plus ni demandé ni parsé :
+      // il était stocké à chaque heure et aucun code ne le lisait. Un
+      // désaccord de DIRECTION entre modèles serait un signal utile, mais
+      // il ne peut pas entrer dans `niveauConfiance`, dont l'écart est
+      // exprimé en km/h — mélanger des degrés et des km/h dans la même
+      // métrique n'aurait aucun sens. À traiter comme une règle séparée
+      // si le besoin se confirme.
       return new Map(
         c.hourly.time.map((iso, i) => [
           iso,
-          { vent: c.hourly.wind_speed_10m?.[i] ?? null, direction: c.hourly.wind_direction_10m?.[i] ?? null },
+          {
+            vent: c.hourly.wind_speed_10m?.[i] ?? null,
+            rafales: c.hourly.wind_gusts_10m?.[i] ?? null,
+          },
         ])
       );
     } catch {
