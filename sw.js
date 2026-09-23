@@ -4,13 +4,14 @@
 // avec repli sur la dernière prévision en cache (mode hors-ligne).
 // ============================================================
 
-const CACHE = "vent4000-v16";
+const CACHE = "vent4000-v17";
 const SHELL = [
   "./",
   "./index.html",
   "./css/style.css",
   "./js/app.js",
   "./js/config.js",
+  "./js/carburant.js",
   "./js/deplacement.js",
   "./js/meteo.js",
   "./js/ouverture.js",
