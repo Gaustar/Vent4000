@@ -2,11 +2,12 @@
 // Vent4000 — Application (UI)
 // ============================================================
 
-import { DZ, NIVEAUX_PRESSION, NIVEAUX_AGL, NIVEAUX_PRATIQUE, VOL, LIENS, VERSION } from "./config.js";
+import { DZ, NIVEAUX_PRESSION, NIVEAUX_AGL, NIVEAUX_PRATIQUE, VOL, LIENS, VERSION, LEGAL_BE } from "./config.js";
 import { statutOuverture } from "./ouverture.js";
 import { scoreHeure, fenetreSautable, meilleurVerdict, ventPiste, niveauConfiance } from "./scoring.js";
 import { estimerSpot } from "./spot.js";
 import { comparerPrevisions, doitRemplacerInstantane } from "./tendance.js";
+import { conseilDeplacement } from "./deplacement.js";
 import { chargerMeteo } from "./meteo.js";
 
 // ------------------------------------------------------------
@@ -49,13 +50,22 @@ function sauverInstantanes() {
   try { localStorage.setItem(CLE_INSTANTANES, JSON.stringify(etat.instantanes)); } catch { /* mode privé */ }
 }
 
-/** Seuils effectifs = préréglage du niveau + overrides éventuels. */
+/**
+ * Seuils effectifs = préréglage du niveau + overrides éventuels, bornés au
+ * droit belge.
+ *
+ * Le bornage est refait ICI et pas seulement à la saisie : un réglage
+ * enregistré par une version antérieure (le champ vent montait à 60 km/h,
+ * le plafond descendait à 300 m) est toujours dans le localStorage de
+ * l'appareil et ressortirait tel quel. Point de passage unique de tous
+ * les seuils, donc le bon endroit pour garantir l'invariant.
+ */
 function seuilsActifs() {
   const base = NIVEAUX_PRATIQUE[etat.reglages.niveau] ?? NIVEAUX_PRATIQUE.tandem;
   return {
     label: base.label,
-    ventMax: etat.reglages.ventMax ?? base.ventMax,
-    plafondMin: etat.reglages.plafondMin ?? base.plafondMin,
+    ventMax: Math.min(etat.reglages.ventMax ?? base.ventMax, LEGAL_BE.ventMoyenMaxSol),
+    plafondMin: Math.max(etat.reglages.plafondMin ?? base.plafondMin, LEGAL_BE.plafondMinAGL),
     ecartRafalesOrange: base.ecartRafalesOrange,
     hauteurOuverture: base.hauteurOuverture,
   };
@@ -75,6 +85,13 @@ const VERDICT_TEXTE = {
   orange: "Ça passe juste",
   rouge: "Ça ne saute pas",
 };
+
+// Marqueur de forme, redondant avec la couleur. Sans lui, la timeline de
+// la vue Jour ne distinguait vert/orange/rouge QUE par la teinte de la
+// bordure et d'une pastille de 8 px — illisible pour un daltonisme
+// rouge-vert (~8 % des hommes), et le `title` ne sert qu'au survol
+// desktop, inutile sur mobile qui est la cible.
+const VERDICT_SYMBOLE = { vert: "●", orange: "▲", rouge: "✕" };
 
 function dateLocale(isoDate) {
   const [a, m, j] = isoDate.split("-").map(Number);
@@ -121,6 +138,23 @@ function cardinal(deg) {
   return CARDINAUX[Math.round(deg / 22.5) % 16];
 }
 
+/**
+ * Rotation CSS à appliquer au glyphe « ➤ » pour qu'il pointe vers LÀ OÙ VA
+ * le vent, à partir de la direction météo (celle d'où il vient).
+ *
+ * ⚠ Deux décalages se composent, et en oublier un donne une flèche fausse :
+ *  - le vent va vers `direction + 180` ;
+ *  - « ➤ » (U+27A4 BLACK RIGHTWARDS ARROWHEAD) pointe vers l'EST à
+ *    rotate(0), pas vers le nord : viser le cap B demande rotate(B − 90).
+ * D'où `direction + 180 − 90`. Jusqu'à la v1.4.5 le code appliquait
+ * `direction + 180`, donc toutes les flèches (chips ET profil vertical)
+ * étaient à 90° de la réalité — et contredisaient la boussole SVG, qui
+ * elle est juste puisque ses formes pointent déjà vers le haut.
+ */
+function rotationFleche(direction) {
+  return (direction ?? 0) + 90;
+}
+
 /** "14h → 17h" à partir d'une fenêtre. */
 function texteFenetre(f) {
   if (!f || f.debut == null) return null;
@@ -137,8 +171,28 @@ function statCell(label, valeur, unite = "", alerte = false) {
 // ------------------------------------------------------------
 // Calcul des jours d'ouverture scorés
 // ------------------------------------------------------------
+// Mémo du calcul complet de la semaine. `rendreJour` appelait
+// joursOuvertsScores() à CHAQUE tap sur une heure, soit 7 jours × ~14 h
+// de scoring complet (profil de vent inclus depuis la v1.6.0) pour une
+// interaction qui ne change rien au calcul. La clé couvre tout ce qui
+// peut l'invalider : le jeu de prévisions et les seuils effectifs.
+let memoJours = { cle: null, valeur: null };
+
+function cleMemo(seuils) {
+  return [etat.meteo?.recupereLe, seuils.label, seuils.ventMax, seuils.plafondMin,
+          seuils.hauteurOuverture, todayIso(), Math.floor(heureCourante())].join("|");
+}
+
 function joursOuvertsScores() {
   const seuils = seuilsActifs();
+  const cle = cleMemo(seuils);
+  if (memoJours.cle === cle) return memoJours.valeur;
+  const valeur = calculerJoursOuverts(seuils);
+  memoJours = { cle, valeur };
+  return valeur;
+}
+
+function calculerJoursOuverts(seuils) {
   const resultat = [];
   const maintenant = heureCourante();
   const aujourdhui = todayIso();
@@ -163,6 +217,14 @@ function joursOuvertsScores() {
             ...h,
             ventPrecedent: ventParHeure.get(h.heure - 1),
             echeanceJours: index,
+            // Relevé temps réel : uniquement pour l'heure en cours, seule
+            // pour laquelle « maintenant » et la prévision décrivent le
+            // même moment. Il était affiché mais jamais confronté à la
+            // prévision, donc une prévision en train de se tromper ne
+            // déclenchait rien.
+            ventActuel: (estAujourdhui && h.heure === Math.floor(maintenant))
+              ? etat.meteo.actuel?.vent ?? null
+              : null,
           }, seuils),
         }));
       return {
@@ -208,11 +270,19 @@ function joursOuvertsScores() {
  * « Vent 34 km/h » et « Vent 37 km/h » sont le même motif.
  */
 const MOTIFS = [
+  // Les motifs légaux passent en premier : leurs libellés commencent par
+  // les mêmes mots que les motifs de niveau (« Vent… », « Plafond… »,
+  // « Visibilité… ») et seraient sinon absorbés par ceux-ci.
+  [/hors limite légale/,      "Hors limite légale (vent)"],
+  [/Plafond .*légal/,         "Plafond sous le minimum légal"],
+  [/Visibilité .*légal/,      "Visibilité sous le minimum légal"],
   [/^Rafales .*seuil/, "Rafales au-dessus du seuil"],
   [/^Rafales \+/,      "Rafales marquées"],
   [/^Vent \d/,         "Vent trop fort"],
   [/^Vent proche/,     "Vent proche du seuil"],
   [/^Vent en hausse/,  "Vent en hausse rapide"],
+  [/à l'ouverture/,    "Vent fort à l'ouverture"],
+  [/^Relevé actuel/,   "Relevé actuel ≠ prévision"],
   [/^Plafond/,         "Plafond trop bas"],
   [/^Couche compacte/, "Couche compacte au largage"],
   [/^Ciel bouché/,     "Ciel bouché"],
@@ -357,6 +427,18 @@ function rendreHero(jours) {
 
   const f = meilleur.meilleureFenetre;
   const dansFenetre = meilleur.heures.filter((x) => x.h.heure >= f.debut && x.h.heure < f.fin);
+  // Garde structurelle : Math.max() sur un tableau vide vaut -Infinity et
+  // afficherait « -Infinity km/h ». En pratique la fenêtre vient d'heures
+  // réelles, mais rien dans les types ne le garantit.
+  if (!dansFenetre.length) {
+    hero.className = "hero orange";
+    $("#hero-verdict").textContent = VERDICT_TEXTE[meilleur.verdictJour];
+    $("#hero-quand").innerHTML =
+      `<strong>${JOURS_FR[meilleur.date.getDay()]} ${meilleur.date.getDate()} ${MOIS_FR[meilleur.date.getMonth()]}</strong> · ${texteFenetre(f)}`;
+    $("#hero-stats").innerHTML = "";
+    $("#hero-note").textContent = "Détail horaire indisponible pour cette fenêtre.";
+    return;
+  }
   const vents = dansFenetre.map((x) => x.h.vent10 ?? 0);
   const rafales = dansFenetre.map((x) => x.h.rafales10 ?? 0);
   const plafonds = dansFenetre.map((x) => x.score.plafond);
@@ -379,14 +461,65 @@ function rendreHero(jours) {
   if (meilleur.motif) notes.push(meilleur.motif.toLowerCase());
   if (meilleur.lointain) notes.push("échéance lointaine, à reconfirmer");
   $("#hero-note").textContent = notes.length ? `À surveiller : ${notes.join(" · ")}.` : "";
+  afficherAvertissementExperience($("#hero-experience"), meilleur.verdictJour);
+  rendreDeplacement($("#hero-deplacement"), {
+    verdict: meilleur.verdictJour,
+    duree: f.duree,
+    confiance: conf.niveau,
+    echeanceJours: meilleur.index,
+  });
+}
+
+/**
+ * Bloc « est-ce que ça vaut le déplacement ? » — la vraie question de
+ * l'app depuis Bouillon (226 km et ~3 h par tentative). Affiche le conseil
+ * ET son coût, pour que l'arbitrage soit concret et non théorique.
+ */
+function rendreDeplacement(el, params) {
+  if (!el) return;
+  const c = conseilDeplacement(params);
+  const heures = Math.round(c.cout.minutes / 60);
+  el.className = `deplacement dep-${c.niveau}`;
+  el.hidden = false;
+  el.innerHTML = `
+    <div class="dep-haut">
+      <strong class="dep-titre">${c.titre}</strong>
+      <span class="dep-cout">${c.cout.km} km · ${heures} h · ~${c.cout.euros} €</span>
+    </div>
+    <p class="dep-detail">${c.detail}</p>`;
+}
+
+/**
+ * Sur une journée limite, le Paraclub ne publie pas un seuil de vent : il
+ * pose une BARRIÈRE D'EXPÉRIENCE — un nombre de sauts minimum pour être
+ * autorisé à décoller (constat tiré des briefings de l'espace membre,
+ * septembre 2026 ; contenu réservé aux membres, non reproduit ici).
+ *
+ * L'app ne peut pas prévoir cette barrière : elle dépend du jugement du
+ * responsable de séance, et la variable qu'elle utilise (le nombre de
+ * sauts au carnet) n'est pas dans l'app. Un verdict orange ne signifie
+ * donc pas « ça passe pour toi » — il signifie « ça passe peut-être, pour
+ * certains ». D'où cet avertissement explicite, affiché uniquement quand
+ * le verdict est orange : c'est exactement le cas où l'écart entre le
+ * verdict météo et la décision du club est le plus grand.
+ */
+function afficherAvertissementExperience(el, verdict) {
+  if (!el) return;
+  const concerne = verdict === "orange";
+  el.hidden = !concerne;
+  if (concerne) {
+    el.innerHTML = `Journée limite : le club peut imposer un <strong>nombre de sauts minimum</strong>
+      pour débuter (barrière d'expérience, pas un seuil de vent).
+      <a href="${LIENS.briefing}" target="_blank" rel="noopener">Vérifier le briefing du club</a>.`;
+  }
 }
 
 function confianceMoyenne(heuresScorees, echeanceJours) {
   const niveaux = heuresScorees.map((x) =>
     niveauConfiance(x.h.vent10, [
-      { nom: "AROME", vent: x.h.comparaisons?.arome?.vent },
-      { nom: "ECMWF", vent: x.h.comparaisons?.ecmwf?.vent },
-    ], echeanceJours).niveau);
+      { nom: "AROME", vent: x.h.comparaisons?.arome?.vent, rafales: x.h.comparaisons?.arome?.rafales },
+      { nom: "ECMWF", vent: x.h.comparaisons?.ecmwf?.vent, rafales: x.h.comparaisons?.ecmwf?.rafales },
+    ], echeanceJours, x.h.rafales10).niveau);
   const pire = ["faible", "moyenne", "haute", "unique"].find((n) => niveaux.includes(n)) ?? "unique";
   const LIBELLES = { haute: "Haute", moyenne: "Moyenne", faible: "Faible", unique: "1 modèle" };
   return { niveau: pire, libelle: LIBELLES[pire] };
@@ -434,6 +567,19 @@ function rendreJour() {
     ? `Fenêtre <strong>${fenetre}</strong>${info.motif ? ` · ${info.motif.toLowerCase()}` : ""}`
     : (info.motif ?? "Aucune fenêtre de 2 h consécutives");
 
+  afficherAvertissementExperience($("#jour-experience"), info.verdictJour);
+
+  const fen = info.meilleureFenetre;
+  const heuresFenetre = fen?.debut != null
+    ? info.heures.filter((x) => x.h.heure >= fen.debut && x.h.heure < fen.fin)
+    : [];
+  rendreDeplacement($("#jour-deplacement"), {
+    verdict: info.verdictJour,
+    duree: fen?.duree ?? 0,
+    confiance: confianceMoyenne(heuresFenetre, info.index).niveau,
+    echeanceJours: info.index,
+  });
+
   $("#jour-creneaux").innerHTML = info.creneaux
     .map((c) => {
       const f = texteFenetre(c.fenetre);
@@ -458,16 +604,25 @@ function rendreJour() {
   for (const { h, score } of toutes) {
     const estMaintenant = estAujourdhui && h.heure === heureActuelle;
     const chip = document.createElement("button");
-    chip.className = `chip ${score.verdict}${h.heure === etat.heureSelectionnee ? " actif" : ""}`;
-    const rotation = (h.direction10 ?? 0) + 180;
+    const estActif = h.heure === etat.heureSelectionnee;
+    chip.className = `chip ${score.verdict}${estActif ? " actif" : ""}`;
+    const rotation = rotationFleche(h.direction10);
     chip.innerHTML = `
       ${estMaintenant ? `<span class="chip-maintenant">MAINTENANT</span>` : ""}
       <span class="chip-h">${h.heure}h</span>
-      <span class="chip-pastille"></span>
+      <span class="chip-pastille" aria-hidden="true">${VERDICT_SYMBOLE[score.verdict]}</span>
       <span class="chip-fleche" style="transform:rotate(${rotation}deg)">➤</span>
       <span class="chip-v">${Math.round(h.vent10 ?? 0)}</span>
       <span class="chip-r">raf ${Math.round(h.rafales10 ?? 0)}</span>`;
-    chip.title = `${h.heure}h — vent du ${cardinal(h.direction10)} · ${score.raisons.join(" · ") || "Conditions favorables"}`;
+    const resume = `${h.heure}h — ${VERDICT_TEXTE[score.verdict]} · vent ${Math.round(h.vent10 ?? 0)} km/h du ${cardinal(h.direction10)}, rafales ${Math.round(h.rafales10 ?? 0)}`;
+    chip.title = `${resume} · ${score.raisons.join(" · ") || "Conditions favorables"}`;
+    // Motif ARIA complet : #timeline porte role="tablist", ses enfants
+    // doivent donc être des `tab`. Avant la v1.5.0 c'étaient des boutons
+    // nus — un lecteur d'écran annonçait une liste d'onglets vide.
+    chip.setAttribute("role", "tab");
+    chip.setAttribute("aria-selected", String(estActif));
+    chip.setAttribute("aria-controls", "detail-heure");
+    chip.setAttribute("aria-label", resume);
     chip.addEventListener("click", () => {
       etat.heureSelectionnee = h.heure;
       rendreJour();
@@ -491,13 +646,13 @@ function rendreDetailHeure(h, score, seuils, echeanceJours) {
 
   // Confiance
   const confiance = niveauConfiance(h.vent10, [
-    { nom: "AROME", vent: h.comparaisons?.arome?.vent },
-    { nom: "ECMWF", vent: h.comparaisons?.ecmwf?.vent },
-  ], echeanceJours);
+    { nom: "AROME", vent: h.comparaisons?.arome?.vent, rafales: h.comparaisons?.arome?.rafales },
+    { nom: "ECMWF", vent: h.comparaisons?.ecmwf?.vent, rafales: h.comparaisons?.ecmwf?.rafales },
+  ], echeanceJours, h.rafales10);
   const LABELS = {
-    haute: ["Confiance haute", `${confiance.nModeles} modèles s'accordent (écart max ${confiance.ecart} km/h)`],
-    moyenne: ["Confiance moyenne", `${confiance.nModeles} modèles proches (écart max ${confiance.ecart} km/h)`],
-    faible: ["Confiance faible", `${confiance.nModeles} modèles divergent (écart max ${confiance.ecart} km/h) — à revérifier`],
+    haute: ["Confiance haute", `${confiance.nModeles} modèles s'accordent sur le vent et les rafales (écart max ${confiance.ecart} km/h)`],
+    moyenne: ["Confiance moyenne", `${confiance.nModeles} modèles proches sur le vent et les rafales (écart max ${confiance.ecart} km/h)`],
+    faible: ["Confiance faible", `${confiance.nModeles} modèles divergent (écart max ${confiance.ecart} km/h, vent ou rafales) — à revérifier`],
     unique: ["Modèle unique", "comparaison indisponible pour cette heure"],
   };
   const [titre, detail] = LABELS[confiance.niveau];
@@ -531,11 +686,16 @@ function rendreDetailHeure(h, score, seuils, echeanceJours) {
 
   // Spot / dérive
   const spot = estimerSpot(h, seuils.hauteurOuverture, DZ.altitudeLargage);
+  // « Largage » affiche le cap ET la distance : savoir qu'il faut remonter
+  // au 245° sans savoir de combien ne permet pas de se placer. La distance
+  // était calculée depuis la v1.4.0 mais n'était jamais montrée.
   $("#spot").innerHTML = [
     statCell("Sous voile", formatDistance(spot.voile.distance), cardinal(spot.voile.cap)),
     statCell("En chute", formatDistance(spot.chute.distance), cardinal(spot.chute.cap)),
     statCell("Dérive totale", formatDistance(spot.total.distance), cardinal(spot.total.cap)),
-    statCell("Largage", `${String(spot.pointLargage.cap).padStart(3, "0")}°`, cardinal(spot.pointLargage.cap)),
+    statCell("Largage",
+      `${String(spot.pointLargage.cap).padStart(3, "0")}° · ${formatDistance(spot.pointLargage.distance)}`,
+      cardinal(spot.pointLargage.cap)),
   ].join("");
   $("#spot-note").textContent =
     `Estimation : ouverture ${seuils.hauteurOuverture} m, largage ${DZ.altitudeLargage} m, ` +
@@ -576,7 +736,7 @@ function formatDistance(m) {
 function ligneProfil({ altitude, role, vent, dir, temp, sol = false }) {
   const div = document.createElement("div");
   div.className = `niveau${sol ? " sol" : ""}`;
-  const rotation = dir != null ? dir + 180 : 0;
+  const rotation = dir != null ? rotationFleche(dir) : 0;
   div.innerHTML = `
     <div class="niv-alt"><strong>${altitude}</strong><span>${role}</span></div>
     <div class="niv-fleche" title="${dir != null ? Math.round(dir) + "°" : ""}">
@@ -636,13 +796,21 @@ function brancherReglages() {
     rendreReglages();
     rendreSemaine();
   });
+  // Les bornes viennent du droit belge (CIR/GDF-05 §6), pas de valeurs
+  // arbitraires : on ne peut pas se régler un seuil qui autoriserait un
+  // saut interdit. Avant la v1.5.0 le vent montait à 60 km/h (14 de trop)
+  // et le plafond descendait à 300 m (un tiers du minimum légal).
   $("#reglage-vent").addEventListener("change", (e) => {
-    etat.reglages.ventMax = Math.max(5, Math.min(60, Number(e.target.value) || 0));
+    const v = Math.max(5, Math.min(LEGAL_BE.ventMoyenMaxSol, Number(e.target.value) || 0));
+    etat.reglages.ventMax = v;
+    e.target.value = v;
     sauverReglages();
     rendreSemaine();
   });
   $("#reglage-plafond").addEventListener("change", (e) => {
-    etat.reglages.plafondMin = Math.max(300, Math.min(4000, Number(e.target.value) || 0));
+    const p = Math.max(LEGAL_BE.plafondMinAGL, Math.min(4000, Number(e.target.value) || 0));
+    etat.reglages.plafondMin = p;
+    e.target.value = p;
     sauverReglages();
     rendreSemaine();
   });
@@ -728,10 +896,15 @@ async function init() {
     $("#chargement").hidden = true;
     $("#vue-semaine").hidden = false;
   } catch (err) {
-    $("#chargement").innerHTML = `
+    // `err.message` passe par textContent : c'est le seul texte non
+    // littéral qui atteignait innerHTML dans toute l'app.
+    const zone = $("#chargement");
+    zone.innerHTML = `
       <p><strong>Impossible de charger la météo.</strong></p>
-      <p>${err.message}</p>
-      <button class="btn" onclick="location.reload()">Réessayer</button>`;
+      <p class="erreur-detail"></p>
+      <button class="btn" id="btn-reessayer">Réessayer</button>`;
+    zone.querySelector(".erreur-detail").textContent = err.message;
+    zone.querySelector("#btn-reessayer").addEventListener("click", () => location.reload());
     console.error(err);
   }
 }

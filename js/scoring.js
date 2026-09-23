@@ -9,7 +9,8 @@
 // Sinon                    → vert
 // ============================================================
 
-import { SEUILS_COMMUNS, DZ } from "./config.js";
+import { SEUILS_COMMUNS, DZ, LEGAL_BE } from "./config.js";
+import { profilVent, ventAAltitude } from "./spot.js";
 
 /**
  * Plafond nuageux estimé en m AGL.
@@ -67,24 +68,43 @@ export function scoreHeure(h, seuils) {
   const C = SEUILS_COMMUNS;
   const raisons = [];
   const plafond = plafondEstime(h);
-  const ecartRafalesOrange = seuils.ecartRafalesOrange ?? C.ecartRafalesOrange ?? 10;
+  const ecartRafalesOrange = seuils.ecartRafalesOrange ?? 10;
+
+  // --- Étage 0 : limites LÉGALES belges ----------------------
+  // CIR/GDF-05 §6 (cf. LEGAL_BE dans config.js). Testées séparément des
+  // seuils de niveau et avec leur propre motif : « au-dessus de ton
+  // seuil perso » et « interdit par la loi » ne se disent pas pareil.
+  // Le point (c) de la circulaire porte sur la MOYENNE au sol — pas sur
+  // la rafale, qui relève du durcissement de niveau ci-dessous.
+  // Les réglages étant bornés à ces valeurs (app.js / index.html), ces
+  // tests ne devraient jamais être le seul motif : c'est un garde-fou
+  // structurel, pour qu'aucune évolution future des seuils ne puisse
+  // produire un feu vert sur un saut illégal.
+  if ((h.vent10 ?? 0) > LEGAL_BE.ventMoyenMaxSol)
+    raisons.push(`Vent moyen ${Math.round(h.vent10)} km/h — hors limite légale (25 kts)`);
+  if (plafond < LEGAL_BE.plafondMinAGL)
+    raisons.push(`Plafond ~${plafond} m — sous le minimum légal (3000 ft)`);
+  if (h.visibilite != null && h.visibilite < LEGAL_BE.visibiliteMin)
+    raisons.push("Visibilité < 3 km — sous le minimum légal");
 
   // --- Étage 1 : éliminatoires -------------------------------
   if ((h.precip ?? 0) > C.precipMax) raisons.push("Pluie");
   if ((h.probaPluie ?? 0) >= C.probaPluieMax) raisons.push("Forte proba de pluie");
   if ((h.cape ?? 0) >= C.capeRouge) raisons.push("Risque orageux (CAPE)");
-  if (h.visibilite != null && h.visibilite < C.visibiliteMin) raisons.push("Visibilité < 5 km");
   // Ciel bouché : une couche compacte empêche le largage VFR, même si la
   // base estimée est haute. Testé par étage (voir config.js).
   if ((h.nuagesMoyens ?? 0) >= C.nuagesBoucheRouge)
     raisons.push("Couche compacte à l'altitude de largage");
   else if ((h.nuagesBas ?? 0) >= C.nuagesBoucheRouge)
     raisons.push("Ciel bouché (couche basse)");
-  if (plafond < seuils.plafondMin) raisons.push(`Plafond ~${plafond} m`);
-  if ((h.vent10 ?? 0) > seuils.ventMax) raisons.push(`Vent ${Math.round(h.vent10)} km/h`);
-  // La limite de vent s'applique à la rafale, pas à la moyenne : c'est la
-  // rafale qui compte au moment de l'atterrissage ("assume the worst case
-  // scenario at the time of landing" — pratique DZ standard, cf. README).
+  if (plafond < seuils.plafondMin && plafond >= LEGAL_BE.plafondMinAGL)
+    raisons.push(`Plafond ~${plafond} m`);
+  if ((h.vent10 ?? 0) > seuils.ventMax && (h.vent10 ?? 0) <= LEGAL_BE.ventMoyenMaxSol)
+    raisons.push(`Vent ${Math.round(h.vent10)} km/h`);
+  // La limite de NIVEAU s'applique à la rafale : c'est la rafale qui
+  // compte au moment de l'atterrissage ("assume the worst case scenario
+  // at the time of landing" — pratique DZ standard, cf. README). À
+  // distinguer du test légal ci-dessus, qui porte sur la moyenne.
   if ((h.rafales10 ?? 0) > seuils.ventMax)
     raisons.push(`Rafales ${Math.round(h.rafales10)} km/h (> seuil)`);
   if (raisons.length) return { verdict: "rouge", raisons, plafond };
@@ -100,9 +120,27 @@ export function scoreHeure(h, seuils) {
     if (hausse > C.tendanceHausseOrange)
       raisons.push(`Vent en hausse rapide (+${Math.round(hausse)} km/h en 1h)`);
   }
+  // Vent en altitude : la colonne de vent entre enfin dans la décision.
+  // On la lit à la hauteur d'ouverture du niveau, là où le parachutiste
+  // doit pouvoir revenir vers la zone de poser sous voile.
+  if (seuils.hauteurOuverture) {
+    const ventOuverture = ventAAltitude(profilVent(h), seuils.hauteurOuverture);
+    if (ventOuverture != null && ventOuverture > C.ventOuvertureOrange)
+      raisons.push(`Vent ${Math.round(ventOuverture)} km/h à l'ouverture (${seuils.hauteurOuverture} m)`);
+  }
+  // Le relevé temps réel contredit la prévision de cette même heure : la
+  // prévision est en train de se tromper, maintenant.
+  if (h.ventActuel != null && h.vent10 != null) {
+    const ecart = Math.abs(h.ventActuel - h.vent10);
+    if (ecart > C.ecartNowcastOrange)
+      raisons.push(`Relevé actuel ${Math.round(h.ventActuel)} km/h vs ${Math.round(h.vent10)} prévus`);
+  }
   const couverture = (h.nuagesBas ?? 0) + (h.nuagesMoyens ?? 0);
   if (couverture >= C.nuagesOrangeMin) raisons.push("Ciel partiellement couvert");
   if ((h.cape ?? 0) >= C.capeOrange) raisons.push("Instabilité (CAPE)");
+  // Légal (≥ 3 km) mais marge mince : marge de confort DZ, pas un interdit.
+  if (h.visibilite != null && h.visibilite < C.visibiliteConfort)
+    raisons.push(`Visibilité ${(h.visibilite / 1000).toFixed(0)} km`);
   if (raisons.length) return { verdict: "orange", raisons, plafond };
 
   // Confiance faible entre modèles : pas d'éléments franchement dégradants,
@@ -110,9 +148,9 @@ export function scoreHeure(h, seuils) {
   // au vert en confiance. Un para prudent revérifierait avant de conclure.
   if (h.comparaisons) {
     const confiance = niveauConfiance(h.vent10, [
-      { nom: "AROME", vent: h.comparaisons.arome?.vent },
-      { nom: "ECMWF", vent: h.comparaisons.ecmwf?.vent },
-    ], h.echeanceJours ?? 0);
+      { nom: "AROME", vent: h.comparaisons.arome?.vent, rafales: h.comparaisons.arome?.rafales },
+      { nom: "ECMWF", vent: h.comparaisons.ecmwf?.vent, rafales: h.comparaisons.ecmwf?.rafales },
+    ], h.echeanceJours ?? 0, h.rafales10);
     if (confiance.niveau === "faible") {
       return {
         verdict: "orange",
@@ -137,11 +175,12 @@ export function scoreHeure(h, seuils) {
  */
 export function fenetreSautable(heures) {
   if (!heures?.length) return { verdict: "rouge", debut: null, fin: null, duree: 0 };
-  if (heures.length === 1) {
-    const h = heures[0];
-    // Une heure isolée ne fait pas une fenêtre : pas de 2 h consécutives.
-    return { verdict: h.verdict, debut: h.heure, fin: h.heure + 1, duree: 1 };
-  }
+  // Une heure isolée ne fait pas une fenêtre : la règle « 2 h consécutives »
+  // s'applique aussi quand le créneau ne contient qu'une heure (fin de
+  // journée, créneau du vendredi tronqué par le coucher du soleil). Avant
+  // la v1.5.0 ce cas retournait le verdict de l'heure : un créneau réduit
+  // à une heure verte sortait VERT, alors que la même heure verte au
+  // milieu d'un créneau plus long sortait rouge.
 
   /** Plus longue plage d'heures consécutives dont le verdict passe le test. */
   function plusLonguePlage(test) {
@@ -185,7 +224,13 @@ export function scoreCreneau(verdictsHoraires) {
   ).verdict;
 }
 
-/** Pire des deux : utile pour le badge global d'un jour (meilleur créneau). */
+/**
+ * MEILLEUR des verdicts fournis (vert dès qu'un créneau est vert) : c'est
+ * le badge du jour, qui répond à « est-ce qu'il y a un créneau sautable
+ * quelque part dans la journée ? ». À ne pas confondre avec une agrégation
+ * pessimiste — le commentaire d'origine disait « pire des deux », ce que
+ * la fonction n'a jamais fait.
+ */
 export function meilleurVerdict(verdicts) {
   if (verdicts.includes("vert")) return "vert";
   if (verdicts.includes("orange")) return "orange";
@@ -207,15 +252,28 @@ export function meilleurVerdict(verdicts) {
  *   `ecart` reste l'écart réellement observé entre modèles (affichable) ;
  *   le niveau, lui, est calculé sur l'écart + pénalité d'échéance.
  */
-export function niveauConfiance(ventPrimaire, autres = [], echeanceJours = 0) {
+export function niveauConfiance(ventPrimaire, autres = [], echeanceJours = 0, rafalePrimaire = null) {
   const C = SEUILS_COMMUNS;
   const penalite = Math.max(0, echeanceJours - 1) * C.confiancePenaliteParJour;
-  const ecarts = autres
-    .filter((m) => m.vent != null && ventPrimaire != null)
-    .map((m) => Math.abs(ventPrimaire - m.vent));
+  // On confronte les modèles sur le vent moyen ET sur la rafale, en
+  // retenant le pire désaccord des deux. La rafale est le critère qui
+  // élimine une heure (scoreHeure) : un accord sur la moyenne ne dit rien
+  // de l'accord sur la rafale, et c'est justement là que les modèles
+  // divergent le plus. Jusqu'à la v1.5.0 la rafale était téléchargée puis
+  // ignorée, ce qui pouvait afficher « confiance haute » sur un verdict
+  // décidé par une variable jamais comparée.
+  const ecarts = [];
+  for (const m of autres) {
+    if (m.vent != null && ventPrimaire != null) ecarts.push(Math.abs(ventPrimaire - m.vent));
+    if (m.rafales != null && rafalePrimaire != null) ecarts.push(Math.abs(rafalePrimaire - m.rafales));
+  }
   if (ecarts.length === 0) return { niveau: "unique", ecart: null, nModeles: 1, penalite };
   const ecart = Math.round(Math.max(...ecarts));
-  const nModeles = ecarts.length + 1;
+  // Compter les MODÈLES qui ont contribué, pas les écarts : depuis que la
+  // rafale est comparée aussi, un même modèle peut produire deux écarts.
+  const nModeles = autres.filter(
+    (m) => (m.vent != null && ventPrimaire != null) || (m.rafales != null && rafalePrimaire != null)
+  ).length + 1;
   const effectif = ecart + penalite;
   const niveau =
     effectif <= C.confianceHauteMax ? "haute" :

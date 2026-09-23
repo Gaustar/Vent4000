@@ -536,10 +536,21 @@ h1, h2, h3 { font-family: "Barlow Condensed", "Barlow", sans-serif; }
   font-weight: 600;
   color: var(--encre);
 }
-.chip-pastille { width: 8px; height: 8px; border-radius: 50%; background: var(--encre-3); }
-.chip.vert .chip-pastille   { background: var(--vert); }
-.chip.orange .chip-pastille { background: var(--ambre); }
-.chip.rouge .chip-pastille  { background: var(--rouge); }
+/* Marqueur de verdict : la FORME (● ▲ ✕) porte l'information autant que
+   la couleur, pour rester lisible en daltonisme rouge-vert. Ne pas
+   remplacer par une simple pastille colorée. */
+.chip-pastille {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 12px;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--encre-3);
+}
+.chip.vert .chip-pastille   { color: var(--vert); }
+.chip.orange .chip-pastille { color: var(--ambre); }
+.chip.rouge .chip-pastille  { color: var(--rouge); }
 .chip-fleche { font-size: 15px; line-height: 1; color: var(--accent); }
 .chip-v { font-size: 15px; font-weight: 600; color: var(--encre); }
 .chip-r { font-size: 11px; color: var(--encre-3); }
@@ -727,6 +738,85 @@ h1, h2, h3 { font-family: "Barlow Condensed", "Barlow", sans-serif; }
   color: var(--encre-2);
 }
 .avertissement strong { color: var(--encre); }
+
+/* ---------- « Ça vaut le déplacement ? » ----------
+   Le bloc porte sa propre échelle de couleur, distincte du verdict météo :
+   on peut avoir une météo verte et un déplacement déraisonnable (fenêtre
+   trop courte, échéance lointaine). Bleu accent = information, pas verdict. */
+.deplacement {
+  margin: var(--sp-4) 0 0;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--bord);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-s);
+  background: var(--surface-2);
+}
+.dep-haut {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+.dep-titre {
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 17px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--encre);
+}
+.dep-cout {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11.5px;
+  color: var(--encre-3);
+  white-space: nowrap;
+}
+.dep-detail {
+  margin: var(--sp-2) 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--encre-2);
+}
+.deplacement.dep-partir      { border-left-color: var(--vert); }
+.deplacement.dep-partir .dep-titre { color: var(--vert); }
+.deplacement.dep-renoncer    { border-left-color: var(--rouge); }
+.deplacement.dep-renoncer .dep-titre { color: var(--rouge); }
+.deplacement.dep-reconfirmer { border-left-color: var(--ambre); }
+.deplacement.dep-reconfirmer .dep-titre { color: var(--ambre); }
+
+/* Barrière d'expérience : n'apparaît que sur verdict orange (cf. app.js). */
+.avert-experience {
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-3);
+  border-left: 3px solid var(--ambre);
+  border-radius: var(--r-s);
+  background: var(--ambre-fond);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--encre-2);
+}
+.avert-experience strong { color: var(--encre); }
+.avert-experience a { color: var(--accent); }
+
+/* ---------- Cadre réglementaire (Réglages) ---------- */
+.champ-borne {
+  display: block;
+  margin-top: var(--sp-2);
+  font-size: 11px;
+  color: var(--encre-3);
+  letter-spacing: 0.2px;
+}
+.bloc-legal { margin-top: var(--sp-4); }
+.legal-texte {
+  margin: 0 0 var(--sp-3);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--encre-2);
+}
+.legal-texte:last-child { margin-bottom: 0; }
+.legal-texte strong { color: var(--encre); }
+.legal-texte em { color: var(--encre-3); font-style: italic; }
+.erreur-detail { color: var(--encre-3); font-size: 13px; }
 
 /* ---------- Pied ---------- */
 .pied {

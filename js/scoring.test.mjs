@@ -1,8 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { scoreHeure, scoreCreneau, fenetreSautable, meilleurVerdict, ventPiste, plafondEstime, niveauConfiance } from "./scoring.js";
+import { LEGAL_BE } from "./config.js";
 
 const SEUILS_TANDEM = { ventMax: 28, plafondMin: 1500 };
+// Niveau fictif réglé PILE sur la limite légale, pour vérifier que le
+// garde-fou légal fonctionne même quand le seuil de niveau ne mord pas.
+const SEUILS_MAX_LEGAL = { ventMax: LEGAL_BE.ventMoyenMaxSol, plafondMin: LEGAL_BE.plafondMinAGL };
 
 function heure(overrides = {}) {
   return {
@@ -13,6 +17,98 @@ function heure(overrides = {}) {
     ...overrides,
   };
 }
+
+// ---- « Aucune information ne doit passer à la trappe » ----------------
+
+test("La confiance confronte AUSSI les rafales, pas seulement le vent moyen", () => {
+  // Modèles parfaitement d'accord sur la moyenne, en total désaccord sur
+  // la rafale. Avant la v1.6.0 la rafale était téléchargée puis ignorée :
+  // l'app annonçait « confiance haute » sur un verdict que la rafale
+  // décide.
+  const accordMoyenne = niveauConfiance(20, [
+    { nom: "AROME", vent: 20, rafales: 55 },
+    { nom: "ECMWF", vent: 20, rafales: 22 },
+  ], 0, 25);
+  assert.equal(accordMoyenne.niveau, "faible",
+    `écart rafale de 30 km/h attendu en confiance faible, reçu ${accordMoyenne.niveau} (ecart ${accordMoyenne.ecart})`);
+  assert.equal(accordMoyenne.ecart, 30);
+});
+
+test("nModeles compte les modèles, pas les écarts (moyenne + rafale = 1 modèle)", () => {
+  const c = niveauConfiance(20, [{ nom: "ECMWF", vent: 21, rafales: 26 }], 0, 25);
+  assert.equal(c.nModeles, 2, "1 modèle de comparaison + le primaire");
+});
+
+test("Vent fort à la hauteur d'ouverture -> orange (la colonne de vent entre dans le verdict)", () => {
+  // Sol calme, mais 70 km/h à l'altitude d'ouverture : sous voile, on ne
+  // pénètre plus. Avant la v1.6.0 la colonne de vent était affichée et
+  // servait au spot, sans jamais peser sur le go/no-go.
+  const h = heure({
+    vent10: 5, rafales10: 7, direction10: 240,
+    niveauxAGL: { 80: { vent: 30, dir: 240 }, 180: { vent: 45, dir: 240 } },
+    niveaux: { 850: { vent: 70, dir: 240, agl: 1400 }, 600: { vent: 90, dir: 240, agl: 4000 } },
+  });
+  const s = scoreHeure(h, { ...SEUILS_TANDEM, hauteurOuverture: 1400 });
+  assert.equal(s.verdict, "orange");
+  assert.ok(s.raisons.some((r) => r.includes("à l'ouverture")),
+    `motif « à l'ouverture » attendu, reçu : ${s.raisons.join(" | ")}`);
+});
+
+test("Relevé temps réel très différent de la prévision -> orange", () => {
+  const s = scoreHeure(heure({ vent10: 10, rafales10: 12, ventActuel: 28 }), SEUILS_TANDEM);
+  assert.equal(s.verdict, "orange");
+  assert.ok(s.raisons.some((r) => r.startsWith("Relevé actuel")),
+    `motif nowcast attendu, reçu : ${s.raisons.join(" | ")}`);
+});
+
+test("Nowcast proche de la prévision -> aucun signal", () => {
+  const s = scoreHeure(heure({ vent10: 10, rafales10: 12, ventActuel: 13 }), SEUILS_TANDEM);
+  assert.equal(s.verdict, "vert");
+});
+
+// ---- Étage 0 : limites légales belges (CIR/GDF-05 §6) ----------------
+
+test("Vent moyen au-dessus de 25 kts -> rouge avec motif LÉGAL distinct", () => {
+  const s = scoreHeure(heure({ vent10: LEGAL_BE.ventMoyenMaxSol + 1, rafales10: 0 }), SEUILS_MAX_LEGAL);
+  assert.equal(s.verdict, "rouge");
+  assert.ok(s.raisons.some((r) => r.includes("hors limite légale")),
+    `motif légal attendu, reçu : ${s.raisons.join(" | ")}`);
+});
+
+test("Plafond sous 3000 ft -> rouge avec motif légal, même si le seuil de niveau est plus bas", () => {
+  // Niveau réglé au plancher légal : seul le test légal peut mordre.
+  const s = scoreHeure(heure({ t2m: 12, pointRosee: 11, nuagesBas: 80 }), SEUILS_MAX_LEGAL);
+  assert.equal(s.verdict, "rouge");
+  assert.ok(s.raisons.some((r) => r.includes("minimum légal")),
+    `motif légal attendu, reçu : ${s.raisons.join(" | ")}`);
+});
+
+test("Visibilité sous 3 km -> rouge légal ; entre 3 et 5 km -> orange (marge club, légal)", () => {
+  const illegal = scoreHeure(heure({ visibilite: 2000 }), SEUILS_TANDEM);
+  assert.equal(illegal.verdict, "rouge");
+  assert.ok(illegal.raisons.some((r) => r.includes("minimum légal")));
+
+  // 4 km : légal (≥ 3000 m) — ne doit plus être éliminatoire comme avant la v1.5.0.
+  const limite = scoreHeure(heure({ visibilite: 4000 }), SEUILS_TANDEM);
+  assert.equal(limite.verdict, "orange");
+  assert.ok(limite.raisons.some((r) => r.startsWith("Visibilité")));
+});
+
+test("Le motif légal ne se déclenche pas quand seul le seuil de niveau est franchi", () => {
+  // 30 km/h : au-dessus du tandem (28) mais très en dessous des 46 légaux.
+  const s = scoreHeure(heure({ vent10: 30, rafales10: 30 }), SEUILS_TANDEM);
+  assert.equal(s.verdict, "rouge");
+  assert.ok(!s.raisons.some((r) => r.includes("légale")),
+    `aucun motif légal attendu, reçu : ${s.raisons.join(" | ")}`);
+});
+
+test("Rafale au-dessus du seuil de niveau mais moyenne légale -> rouge de NIVEAU, pas légal", () => {
+  // La loi vise la moyenne (25 kts) ; la rafale relève du durcissement DZ.
+  const s = scoreHeure(heure({ vent10: 20, rafales10: 35 }), SEUILS_TANDEM);
+  assert.equal(s.verdict, "rouge");
+  assert.ok(s.raisons.some((r) => r.includes("Rafales")));
+  assert.ok(!s.raisons.some((r) => r.includes("légale")));
+});
 
 test("Conditions idéales -> vert", () => {
   const s = scoreHeure(heure(), SEUILS_TANDEM);
@@ -177,6 +273,18 @@ test("fenetreSautable : pas de plage verte -> plus longue plage tenable en orang
   assert.equal(f.verdict, "orange");
   assert.equal(f.debut, 10);
   assert.equal(f.fin, 12);
+});
+
+test("fenetreSautable : créneau d'UNE SEULE heure -> jamais de fenêtre, même verte", () => {
+  // Cas réel : fin de journée, ou créneau du vendredi tronqué par le
+  // coucher du soleil. Avant la v1.5.0 ce cas court-circuitait la règle
+  // des 2 h et renvoyait le verdict de l'heure : un créneau d'une heure
+  // verte sortait VERT, alors que la même heure verte au milieu d'un
+  // créneau plus long sortait rouge.
+  const f = fenetreSautable([{ heure: 17, verdict: "vert" }]);
+  assert.equal(f.verdict, "rouge");
+  assert.equal(f.debut, null);
+  assert.equal(f.duree, 0);
 });
 
 test("fenetreSautable : heures vertes isolées, jamais 2 consécutives -> rouge, pas de fenêtre", () => {

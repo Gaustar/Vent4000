@@ -4,6 +4,260 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [1.7.0] — 2026-09-23
+
+L'app change de question. Elle répondait à « ça saute ? » ; elle répond
+maintenant à **« est-ce que ça vaut le déplacement ? »** — ce qui n'est pas
+la même chose quand on habite à 113 km de la DZ.
+
+### Ajouté — arbitrage du déplacement (`js/deplacement.js`)
+
+- **Coût réel affiché** : Bouillon → Paraclub Namur = 113 km / 1h30 sans
+  péage (relevé Google Maps), soit **226 km, ~3 h et ~34 €** de diesel par
+  tentative au prix belge actuel (2,50 €/L, record de septembre 2026).
+  L'arbitrage devient concret au lieu de rester théorique.
+- **Conseil contextuel** — « Ça vaut le déplacement » / « Pari ouvert » /
+  « Garde le créneau » / « Trop tôt pour décider » / « N'y va pas » —
+  construit sur quatre éléments que l'app calcule déjà : verdict, durée de
+  la fenêtre, confiance multi-modèle et échéance.
+- **Deux faits du club structurent la logique**, tous deux sourcés dans la
+  FAQ de paraclubnamur.be :
+  - le club publie sa banderole météo « le matin même (à partir de 7h10 et
+    non la veille) » → le vrai point de décision est le matin de jour J.
+    **« Partir » n'est donc jamais proposé pour un autre jour
+    qu'aujourd'hui** (verrouillé par test) ; au-delà, on planifie ;
+  - le club pratique le standby — « nous attendrons que les conditions
+    s'améliorent au cours de la journée […] le parachutisme est un sport de
+    patience » → un déplacement sur journée moyenne n'est pas binaire, ce
+    qui rend une fenêtre **longue** bien plus précieuse qu'une fenêtre
+    courte à verdict égal.
+- **Périmètre explicite** : les seuils sont sourcés (GDF-05, RSB FWCP),
+  l'arbitrage du trajet ne l'est pas et ne le sera jamais — c'est une
+  tolérance au risque personnelle. Le module ne prétend pas remplacer le
+  verdict du club ; il dit sur quoi se baser avant qu'il ne tombe.
+
+### Performance
+
+- **Mémo du calcul hebdomadaire.** `rendreJour` relançait
+  `joursOuvertsScores()` à chaque tap sur une heure — 7 jours × ~14 h de
+  scoring complet, profil de vent inclus depuis la v1.6.0 — pour une
+  interaction qui ne change rien au résultat. Clé d'invalidation : jeu de
+  prévisions, seuils effectifs, date et heure courante.
+
+### Modifié
+
+- `manifest.json` : description alignée sur la vraie question de l'app et
+  sur ses sources réglementaires.
+
+## [1.6.0] — 2026-09-23
+
+Le **règlement fédéral belge a été retrouvé** — il existe, il est publié,
+et il contredit plusieurs seuils de l'app. Plus : tout ce que l'app
+récupérait sans jamais s'en servir entre désormais dans la décision.
+
+### Ajouté — étage fédéral FWCP (remplace la FFP française)
+
+- **RSB FWCP v2.1 (juin 2026)** intégré et archivé dans
+  `docs/FWCP_RSB_v2.1_20260518.pdf`. Introuvable via les moteurs de
+  recherche ; publié sur fwcp.be → Hub de Formation → Sécurité. §3.1 :
+  le règlement est une **obligation** pour les clubs affiliés, dont Namur.
+
+### Corrigé (sécurité : seuils PLUS PERMISSIFS que le règlement belge)
+
+- **Brevet A : 33 → 25 km/h.** Le RSB §3.4.2 fixe 7 m/s (25,2 km/h)
+  « jusqu'au brevet B inclus ». L'app autorisait **8 km/h de plus** que la
+  limite fédérale réelle. La valeur 33 venait d'une interpolation FFP
+  française sans existence en droit belge.
+- **Brevet B : 39 → 25 km/h**, même règle (lecture conservatrice de
+  l'ambiguïté de la source — voir ci-dessous).
+- **Hauteur d'ouverture brevets B et C/D : 850 → 914 m.** Le RSB §3.5
+  impose 3000 ft AGL **pour tous** ; les 850 m hérités de la FFP étaient
+  **sous le minimum belge**. Répercuté sur les plafonds dérivés.
+- **Élève AFF : 22 → 25 km/h** — alignement sur la valeur fédérale
+  (assouplissement de 3 km/h ; l'ancienne marge n'était pas documentée).
+- **Brevet C/D : 46 km/h inchangé** — mais désormais sourcé deux fois
+  (RSB §3.4.2 *et* GDF-05, qui est la même limite de 25 kts).
+
+⚠ **Ambiguïté de la source, non résolue** : le brevet B figure des deux
+côtés du barème (« jusqu'au brevet B **inclus** : 7 m/s » / « **à partir
+du** brevet B : 25 kts »). Lecture conservatrice retenue. **À faire
+trancher par le Responsable Technique du club.**
+
+### Corrigé (créneaux du club, vérifiés sur paraclubnamur.be)
+
+- **Le scoring démarre à 9h00, plus à 8h30.** « Les séances de saut au PCN
+  débutent à 9h00 » ; 8h30 est l'heure d'ouverture/inscription. L'app
+  proposait des fenêtres 8h-9h pendant lesquelles personne ne saute.
+- **Journées continues à partir du changement d'heure de fin octobre** :
+  « À partir de fin octobre […] les journées sont continues, de 8h30
+  jusqu'au coucher du soleil. » L'app coupait toujours à 14h, ce qui
+  fractionne une journée continue et peut faire manquer une fenêtre à
+  cheval sur 14h (la règle des 2 h s'applique par créneau).
+- Saison, vendredis mai→septembre, ouverture élève à 1500 m et largage à
+  4000 m : **confirmés** par le club, sans changement.
+
+### Ajouté — la barrière d'expérience du club
+
+Constat tiré des briefings de l'espace membre `pro.paraclubnamur.be`
+(septembre 2026) : le club ne publie **pas de seuil de vent**. Sur une
+journée jouable mais limite, il annonce une **barrière d'expérience** —
+un nombre de sauts minimum pour être autorisé à décoller. La variable de
+décision réelle n'est donc pas le brevet — c'est le carnet de sauts, que
+l'app ne connaît pas et ne peut pas prévoir (la barrière dépend du jugement
+du responsable de séance au jour le jour).
+
+Conséquence : un verdict **orange** ne veut pas dire « ça passe pour toi »,
+mais « ça passe peut-être, pour certains ». Un avertissement explicite
+apparaît désormais sur les verdicts orange (vue Semaine et vue Jour), avec
+un lien direct vers le briefing. C'est la limite structurelle de l'app,
+maintenant dite à l'écran plutôt que supposée connue.
+
+### Corrigé (données collectées puis jetées)
+
+- **La confiance ignorait les rafales.** `wind_gusts_10m` était demandé à
+  AROME et ECMWF depuis la v1.1 mais jamais parsé : la comparaison
+  multi-modèle ne portait que sur le vent **moyen**, alors que c'est la
+  **rafale** qui élimine une heure. L'app pouvait afficher « confiance
+  haute » sur un verdict décidé par une variable que les modèles
+  n'avaient jamais confrontée. La confiance retient maintenant le pire
+  désaccord des deux.
+- **La colonne de vent ne pesait rien dans le verdict.** Les vents à
+  80/120/180 m et 925/850/700/600 hPa étaient récupérés, affichés et
+  intégrés au calcul de dérive, sans jamais influencer le go/no-go : une
+  journée calme au sol avec 90 km/h à 4000 m ressortait **verte**. Le vent
+  interpolé à la hauteur d'ouverture dégrade désormais en orange au-delà
+  de `ventOuvertureOrange` (40 km/h) — seuil de bon sens aérologique, sans
+  source fédérale, à confirmer par le RT.
+- **Le nowcast ne contredisait jamais la prévision.** Le relevé « maintenant »
+  est désormais confronté à la prévision de l'heure en cours ; un écart de
+  plus de `ecartNowcastOrange` (10 km/h) dégrade et s'affiche.
+- **Direction des modèles de comparaison supprimée** : parsée à chaque
+  heure, jamais lue. Elle ne peut pas entrer dans `niveauConfiance`, dont
+  l'écart est en km/h — mélanger degrés et km/h n'aurait aucun sens. Elle
+  n'est plus ni demandée ni stockée.
+
+### Tests
+
+- 88 → **96 tests**. Nouveaux : barème FWCP à deux paliers, plancher
+  d'ouverture 3000 ft, confiance sur les rafales, comptage des modèles,
+  vent à l'ouverture, nowcast vs prévision, journée continue de fin
+  octobre, dernier dimanche d'octobre sur 4 ans.
+
+## [1.5.0] — 2026-09-23
+
+Intégration du **cadre légal belge**, qui manquait complètement : jusqu'ici
+l'app s'appuyait sur la FFP (fédération **française**) faute d'avoir trouvé
+la source applicable. Elle existe, elle est belge, elle est contraignante.
+
+### Ajouté — étage légal (CIR/GDF-05)
+
+- **`LEGAL_BE` dans `config.js`** : transcription de la circulaire
+  **CIR/GDF-05, Éd. 4 du 03/06/2016** (Direction générale Transport Aérien,
+  SPF Mobilité et Transports), §6 — copie archivée dans
+  `docs/CIR-GDF-05_ed4_20160603.pdf` :
+  > « Les sauts en parachute ne sont autorisés que dans les conditions
+  > météorologiques suivantes : a) Visibilité : minimum 3000 m ;
+  > b) Base de nuages : minimum 3000 ft AGL ; c) Vitesse du vent :
+  > maximum 25 kts de moyenne au sol. »
+
+  Soit **46 km/h**, **914 m AGL**, **3000 m**.
+- **Hiérarchie à trois étages** explicitée dans l'app (vue Réglages) :
+  loi belge → fédération (FWCP pour Namur) → club. La circulaire le dit
+  elle-même : « Pour ce qui est des aspects techniques non couverts par la
+  présente circulaire, les intéressés se réfèreront aux directives émises
+  par les fédérations de parachutistes reconnues par les Communautés. »
+  Les seuils par brevet restent donc FFP DT49 **en substitution**, à faire
+  confirmer par la FWCP.
+- **Motifs de verdict distincts** : « hors limite légale » ne se confond
+  plus avec « au-dessus de ton seuil perso ».
+
+### Corrigé (sécurité : réglages pouvant autoriser un saut illégal)
+
+- **Le champ « vent max » montait à 60 km/h**, soit 14 de plus que le
+  plafond légal, et **le champ « plafond min » descendait à 300 m**, un
+  tiers du plancher légal. Un réglage personnalisé pouvait donc produire
+  un feu vert sur un saut interdit. Bornes désormais issues de `LEGAL_BE`,
+  dans le HTML *et* dans `seuilsActifs()` — ce second point est nécessaire
+  parce qu'un réglage hors limites enregistré par une version antérieure
+  est encore dans le `localStorage` des appareils.
+- **Garde-fou dans `scoreHeure`** : les limites légales sont testées
+  indépendamment des seuils de niveau, pour qu'aucune évolution future des
+  seuils ne puisse réintroduire le problème.
+
+### Corrigé (affichage faux)
+
+- **Toutes les flèches de vent étaient à 90° de la réalité** — chips de la
+  timeline et profil vertical. Le code appliquait `rotate(direction + 180)`
+  au glyphe « ➤ », en oubliant que **U+27A4 pointe vers l'EST** à
+  `rotate(0)`, pas vers le nord. Un vent de nord était donc dessiné vers
+  l'ouest. La boussole SVG, elle, était juste (ses formes pointent déjà
+  vers le haut) : les deux se contredisaient sur le même écran.
+  Correction centralisée dans `rotationFleche()` (`direction + 90`).
+
+### Corrigé (cohérence des valeurs)
+
+- **Plafonds par brevet désormais dérivés** de
+  `max(plancher légal, hauteur d'ouverture + marge)` au lieu d'être posés à
+  la main. ⚠ **Élève AFF passe de 2800 m à 1800 m — un assouplissement.**
+  Le 2800 n'avait aucune source et créait un effet de falaise involontaire :
+  via `plafondEstime`, dès 40 % de nuages bas le plafond retenu devient
+  `122 × (T − Td)`, et franchir 2800 m aurait demandé un écart
+  température/point de rosée de ~23 °C, inatteignable en Belgique. **Toute
+  heure à ≥ 40 % de couche basse sortait donc rouge pour un élève**, par
+  accident de calcul. Tandem et AFF, qui partagent la hauteur d'ouverture
+  (1500 m), partagent maintenant le même plafond — l'incohérence
+  1500 / 2800 de la v1.4.x disparaît.
+- **Visibilité** : 3000 m (légal) → rouge ; 3000-5000 m → orange (marge de
+  confort club). Avant, le seuil unique de 5000 m sortait **rouge sur des
+  conditions pourtant légalement sautables**.
+- **Moyenne vs rafale explicitées** : la loi vise la *moyenne* au sol, la
+  règle « la limite s'applique à la rafale » est un durcissement de niveau.
+  Les deux tests sont maintenant séparés et documentés comme tels.
+
+### Corrigé (moteur de décision)
+
+- **`fenetreSautable` : un créneau d'une seule heure sortait avec le
+  verdict de cette heure**, court-circuitant la règle des 2 h consécutives
+  appliquée partout ailleurs. Un créneau réduit à une heure verte (fin de
+  journée, vendredi tronqué par le coucher du soleil) sortait donc VERT,
+  alors que la même heure verte au milieu d'un créneau plus long sortait
+  rouge.
+- `meilleurVerdict` : commentaire corrigé (il disait « pire des deux », la
+  fonction retourne le **meilleur** — elle ne l'a jamais fait).
+
+### Corrigé (accessibilité et robustesse)
+
+- **Verdict horaire lisible sans la couleur** : marqueur de forme
+  (● / ▲ / ✕) sur chaque chip. La timeline ne distinguait les verdicts que
+  par la teinte — illisible en daltonisme rouge-vert (~8 % des hommes), et
+  le `title` ne sert qu'au survol desktop, inutile sur mobile.
+- **ARIA de la timeline complété** : `#timeline` portait `role="tablist"`
+  avec des boutons nus pour enfants — un lecteur d'écran annonçait une
+  liste d'onglets vide. Les chips sont maintenant de vrais `tab`
+  (`aria-selected`, `aria-controls`) pointant vers un `tabpanel`.
+- `err.message` passe par `textContent` (seul texte non littéral qui
+  atteignait `innerHTML`).
+- Garde sur `Math.min/max` de tableau vide dans le hero (évite un
+  « -Infinity km/h »).
+
+### Ajouté (affichage)
+
+- **Distance de largage affichée** : le bloc Spot ne montrait que le cap à
+  remonter (« 242° »), sans la distance — pourtant calculée depuis la
+  v1.4.0. Affiche maintenant « 242° · 2.3 km ».
+
+### Supprimé
+
+- `LIENS.waze` : défini mais jamais utilisé (le README annonçait un bouton
+  Waze qui n'a jamais existé dans l'interface).
+
+### Tests
+
+- 76 → **88 tests**. Nouvelle couverture : transcription de `LEGAL_BE`,
+  invariants « aucun niveau au-dessus de la limite légale », dérivation des
+  plafonds, égalité tandem/AFF, motifs légaux vs motifs de niveau,
+  moyenne vs rafale, créneau d'une heure.
+
 ## [1.4.0] — 2026-09-19
 
 Refonte visuelle « instrument de vol » et passage d'un affichage de

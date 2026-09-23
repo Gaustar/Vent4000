@@ -1,7 +1,7 @@
 {
   "name": "Vent4000 — Météo parachutisme Paraclub de Namur",
   "short_name": "Vent4000",
-  "description": "Ça saute à Namur ? Verdict météo par jour d'ouverture, vents du sol à 4000 m (EBNM).",
+  "description": "Ça vaut le déplacement ? Verdict météo par jour d'ouverture au Paraclub de Namur, seuils CIR/GDF-05 et RSB FWCP, vents du sol à 4000 m.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

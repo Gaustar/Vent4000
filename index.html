@@ -53,6 +53,8 @@
         </div>
         <div id="hero-stats" class="stats"></div>
         <p id="hero-note" class="hero-note"></p>
+        <div id="hero-deplacement" class="deplacement" hidden></div>
+        <p id="hero-experience" class="avert-experience" hidden></p>
       </article>
 
       <h2 class="etiquette">Jours d'ouverture</h2>
@@ -84,13 +86,15 @@
             <p id="jour-verdict-quand" class="hero-quand"></p>
           </div>
         </div>
+        <div id="jour-deplacement" class="deplacement" hidden></div>
+        <p id="jour-experience" class="avert-experience" hidden></p>
         <div id="jour-creneaux" class="creneaux"></div>
       </article>
 
       <h3 class="etiquette">Heure par heure <span class="hint">vent / rafales au sol, km/h</span></h3>
       <div id="timeline" class="timeline" role="tablist"></div>
 
-      <div class="bloc">
+      <div class="bloc" id="detail-heure" role="tabpanel" tabindex="0">
         <h3 class="etiquette">Cette heure-là</h3>
         <ul id="raisons" class="raisons"></ul>
         <p id="confiance" class="confiance"></p>
@@ -135,21 +139,44 @@
 
         <label class="champ">
           <span>Vent max au sol <em>km/h</em></span>
-          <input id="reglage-vent" type="number" min="5" max="60" step="1" inputmode="numeric">
+          <input id="reglage-vent" type="number" min="5" max="46" step="1" inputmode="numeric">
+          <small class="champ-borne">Plafond légal belge : 46 km/h (25 kts)</small>
         </label>
 
         <label class="champ">
           <span>Plafond minimum <em>m</em></span>
-          <input id="reglage-plafond" type="number" min="300" max="4000" step="100" inputmode="numeric">
+          <input id="reglage-plafond" type="number" min="914" max="4000" step="50" inputmode="numeric">
+          <small class="champ-borne">Plancher légal belge : 914 m (3000 ft)</small>
         </label>
 
         <button id="reglage-reset" class="btn secondaire">Revenir aux seuils du niveau</button>
       </div>
 
+      <div class="bloc bloc-legal">
+        <h3 class="etiquette">Cadre réglementaire</h3>
+        <p class="legal-texte">
+          <strong>1. Loi belge</strong> — circulaire <strong>CIR/GDF-05</strong> Éd. 4
+          (03/06/2016), DGTA / SPF Mobilité, §6 : visibilité ≥ 3000 m,
+          base de nuages ≥ 3000 ft AGL, vent ≤ 25 kts de <em>moyenne</em> au sol.
+          Ces limites sont appliquées en dur : aucun réglage ne peut les franchir.
+        </p>
+        <p class="legal-texte">
+          <strong>2. Fédération</strong> — la circulaire renvoie aux fédérations
+          reconnues par les Communautés. Pour Namur : <strong>FWCP</strong>.
+          Son règlement technique n'ayant pas pu être consulté, les seuils par
+          brevet reprennent la <strong>FFP DT49</strong> (même nomenclature A/B/C/D)
+          — <em>à faire confirmer par tes moniteurs</em>.
+        </p>
+        <p class="legal-texte">
+          <strong>3. Club</strong> — la circulaire précise que la détermination
+          des conditions « est de la responsabilité du responsable des sauts ».
+        </p>
+      </div>
+
       <p class="avertissement">
-        ⚠ Seuils <strong>indicatifs</strong>. Les valeurs par brevet sont
-        alignées sur la directive technique FFP n°49 (le brevet B est plafonné
-        à 11 m/s), sauf Brevet C/D et Tandem qui relèvent du jugement du club.
+        ⚠ Le cadre légal belge est appliqué strictement. Les seuils
+        <strong>par brevet</strong> restent <strong>indicatifs</strong> tant que le
+        règlement FWCP n'est pas confirmé.
         <strong>La décision de sauter appartient toujours au Paraclub et à tes
         moniteurs.</strong>
       </p>
