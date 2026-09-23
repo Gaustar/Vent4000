@@ -4,6 +4,66 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [1.8.0] — 2026-09-23
+
+### Ajouté — prix du carburant officiel et quotidien (`js/carburant.js`)
+
+Le coût d'un aller-retour était figé à 2,50 €/L dans le code. Le diesel
+belge ayant pris plus de 40 % en un an, un chiffre en dur devient faux en
+quelques semaines et rend l'arbitrage du déplacement trompeur.
+
+- Source : **API be.STAT de Statbel**, vue « Tarif officiel des produits
+  pétroliers », alimentée par la Direction générale de l'Énergie du SPF
+  Économie. C'est le prix **maximum légal** (une station peut vendre moins
+  cher, jamais plus), mis à jour quotidiennement, sous licence CC BY 4.0.
+- Choisie parce qu'elle renvoie `Access-Control-Allow-Origin` reflétant
+  l'origine appelante : **utilisable directement depuis la PWA sur GitHub
+  Pages, sans proxy ni clé d'API** (vérifié en réseau depuis le navigateur,
+  pas seulement en curl).
+- Repli en cascade : réseau → dernier prix connu en cache local → valeur de
+  `config.js`. Le prix est un bonus, jamais bloquant : il est récupéré en
+  parallèle de la météo et un échec ne retarde ni n'interrompt le
+  chargement.
+- La **provenance du prix** est indiquée au survol du coût (« prix officiel
+  du jour » / « dernier prix connu » / « prix de repli ») : un coût affiché
+  sans savoir d'où il sort n'aide pas à décider.
+
+### Modifié — la page d'accueil ne tranche plus à ta place
+
+L'écran d'accueil désignait un « meilleur créneau » sur les 7 jours à
+venir. Ce choix unique tombait souvent sur un vendredi ou un dimanche,
+alors que les sauts se font surtout le samedi : il mettait en avant un jour
+qui n'était pas le bon et reléguait les autres.
+
+- Le **bloc hero a été supprimé**. La liste des jours d'ouverture devient
+  l'écran principal, tous les jours au même niveau.
+- Le **détail** — conseil de déplacement, coût, barrière d'expérience,
+  timeline, profil de vent, spot — n'apparaît plus que sur le jour
+  sélectionné.
+
+### Réglementation — l'ambiguïté du brevet B est levée
+
+Le RSB FWCP plaçait le brevet B des deux côtés de son barème. Le **Basis
+Veiligheidsreglement de la VVP** (homologue flamand, harmonisé avec la FWCP
+au sein de la FBP) tranche : « Tot en met B-brevet : maximum 14 knopen /
+Vanaf **C-brevet** : maximum 25 knopen ». Et 14 kts = 25,9 km/h ≈ les
+7 m/s de la FWCP — même valeur, autre unité.
+
+Le « à partir du brevet B » du RSB est donc très probablement une coquille
+pour « brevet C ». **Aucune valeur ne change** (le brevet B était déjà à
+25 km/h par prudence), mais le choix est désormais corroboré. La VVP
+confirme aussi les 3000 ft et les 3 km : les trois textes concordent.
+
+⚠ Reste non tranché par les deux fédérations : **moyenne ou rafale**. Seul
+GDF-05 précise « de moyenne ».
+
+### Tests
+
+- 106 → **114 tests**. Nouveaux : extraction du Diesel B7 dans le format
+  Statbel réel, robustesse (réseau HS, HTTP en erreur, JSON invalide,
+  produit absent, prix nul), repli du coût sur la valeur de config, et sens
+  de variation du coût avec le prix.
+
 ## [1.7.0] — 2026-09-23
 
 L'app change de question. Elle répondait à « ça saute ? » ; elle répond

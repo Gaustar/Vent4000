@@ -8,6 +8,7 @@ import { scoreHeure, fenetreSautable, meilleurVerdict, ventPiste, niveauConfianc
 import { estimerSpot } from "./spot.js";
 import { comparerPrevisions, doitRemplacerInstantane } from "./tendance.js";
 import { conseilDeplacement } from "./deplacement.js";
+import { prixDiesel } from "./carburant.js";
 import { chargerMeteo } from "./meteo.js";
 
 // ------------------------------------------------------------
@@ -22,6 +23,9 @@ const etat = {
   heureSelectionnee: null,
   reglages: chargerReglages(),
   instantanes: chargerInstantanes(),
+  // Prix officiel du diesel (Statbel / SPF Économie), null tant qu'il n'a
+  // pas été récupéré — le calcul retombe alors sur TRAJET.prixCarburantDefaut.
+  carburant: null,
 };
 
 function chargerReglages() {
@@ -354,8 +358,13 @@ function rendreSemaine() {
   const jours = joursOuvertsScores();
   $("#niveau-actif").textContent = seuilsActifs().label;
 
-  rendreHero(jours);
-
+  // Plus de « meilleur créneau » en tête. L'app désignait un jour unique
+  // sur les 7 à venir — souvent un vendredi ou un dimanche, alors que les
+  // sauts se font surtout le samedi. Ce choix imposé masquait les autres
+  // jours au lieu d'aider. La liste est maintenant l'écran principal :
+  // elle montre tous les jours d'ouverture au même niveau, et le détail
+  // (conseil de déplacement, coût, barrière d'expérience, profil de vent)
+  // n'apparaît que sur le jour qu'on sélectionne.
   const conteneur = $("#jours");
   conteneur.innerHTML = "";
   if (jours.length === 0) {
@@ -403,72 +412,6 @@ function rendreTendance(t) {
   return `<span class="tendance ${t.sens}" title="Depuis ${t.depuisH} h (${t.deltaVent > 0 ? "+" : ""}${t.deltaVent} km/h)">${fleche} ${mot}</span>`;
 }
 
-/** Le verdict de tête : la réponse à « quand aller sauter ? ». */
-function rendreHero(jours) {
-  const hero = $("#hero");
-  const sautables = jours.filter((j) => j.verdictJour !== "rouge" && j.meilleureFenetre?.debut != null);
-  // Meilleur = vert avant orange, puis le plus tôt possible.
-  const meilleur = sautables.sort((a, b) => {
-    const rang = { vert: 0, orange: 1 };
-    return (rang[a.verdictJour] - rang[b.verdictJour]) || (a.index - b.index);
-  })[0];
-
-  if (!meilleur) {
-    hero.className = "hero rouge";
-    $("#hero-verdict").textContent = "Aucun créneau";
-    $("#hero-quand").innerHTML = jours.length
-      ? "Rien de sautable sur les jours d'ouverture à venir."
-      : "Aucun jour d'ouverture dans les 7 prochains jours.";
-    $("#hero-stats").innerHTML = "";
-    const motifs = [...new Set(jours.map((j) => j.motif).filter(Boolean))];
-    $("#hero-note").textContent = motifs.length ? `Principal facteur : ${motifs[0].toLowerCase()}.` : "";
-    return;
-  }
-
-  const f = meilleur.meilleureFenetre;
-  const dansFenetre = meilleur.heures.filter((x) => x.h.heure >= f.debut && x.h.heure < f.fin);
-  // Garde structurelle : Math.max() sur un tableau vide vaut -Infinity et
-  // afficherait « -Infinity km/h ». En pratique la fenêtre vient d'heures
-  // réelles, mais rien dans les types ne le garantit.
-  if (!dansFenetre.length) {
-    hero.className = "hero orange";
-    $("#hero-verdict").textContent = VERDICT_TEXTE[meilleur.verdictJour];
-    $("#hero-quand").innerHTML =
-      `<strong>${JOURS_FR[meilleur.date.getDay()]} ${meilleur.date.getDate()} ${MOIS_FR[meilleur.date.getMonth()]}</strong> · ${texteFenetre(f)}`;
-    $("#hero-stats").innerHTML = "";
-    $("#hero-note").textContent = "Détail horaire indisponible pour cette fenêtre.";
-    return;
-  }
-  const vents = dansFenetre.map((x) => x.h.vent10 ?? 0);
-  const rafales = dansFenetre.map((x) => x.h.rafales10 ?? 0);
-  const plafonds = dansFenetre.map((x) => x.score.plafond);
-  const plafondMin = Math.min(...plafonds);
-  const conf = confianceMoyenne(dansFenetre, meilleur.index);
-
-  hero.className = `hero ${meilleur.verdictJour}`;
-  $("#hero-verdict").textContent = VERDICT_TEXTE[meilleur.verdictJour];
-  $("#hero-quand").innerHTML =
-    `<strong>${JOURS_FR[meilleur.date.getDay()]} ${meilleur.date.getDate()} ${MOIS_FR[meilleur.date.getMonth()]}</strong> · ${texteFenetre(f)}`;
-
-  $("#hero-stats").innerHTML = [
-    statCell("Vent", `${Math.round(Math.min(...vents))}-${Math.round(Math.max(...vents))}`, "km/h"),
-    statCell("Rafales", Math.round(Math.max(...rafales)), "km/h"),
-    statCell("Plafond", plafondMin === Infinity ? "Dégagé" : `${plafondMin}`, plafondMin === Infinity ? "" : "m"),
-    statCell("Confiance", conf.libelle),
-  ].join("");
-
-  const notes = [];
-  if (meilleur.motif) notes.push(meilleur.motif.toLowerCase());
-  if (meilleur.lointain) notes.push("échéance lointaine, à reconfirmer");
-  $("#hero-note").textContent = notes.length ? `À surveiller : ${notes.join(" · ")}.` : "";
-  afficherAvertissementExperience($("#hero-experience"), meilleur.verdictJour);
-  rendreDeplacement($("#hero-deplacement"), {
-    verdict: meilleur.verdictJour,
-    duree: f.duree,
-    confiance: conf.niveau,
-    echeanceJours: meilleur.index,
-  });
-}
 
 /**
  * Bloc « est-ce que ça vaut le déplacement ? » — la vraie question de
@@ -477,14 +420,20 @@ function rendreHero(jours) {
  */
 function rendreDeplacement(el, params) {
   if (!el) return;
-  const c = conseilDeplacement(params);
+  const c = conseilDeplacement({ ...params, prixLitre: etat.carburant?.prix ?? null });
   const heures = Math.round(c.cout.minutes / 60);
+  // La provenance du prix est dite explicitement : un coût affiché sans
+  // savoir s'il vient du jour même ou d'un repli codé en dur n'aide pas
+  // à arbitrer un déplacement à 34 €.
+  const origine = etat.carburant?.source === "statbel" ? "prix officiel du jour"
+    : etat.carburant?.source === "cache" ? "dernier prix connu"
+    : "prix de repli";
   el.className = `deplacement dep-${c.niveau}`;
   el.hidden = false;
   el.innerHTML = `
     <div class="dep-haut">
       <strong class="dep-titre">${c.titre}</strong>
-      <span class="dep-cout">${c.cout.km} km · ${heures} h · ~${c.cout.euros} €</span>
+      <span class="dep-cout" title="Diesel B7 à ${c.cout.prixLitre.toFixed(3)} €/L — ${origine}">${c.cout.km} km · ${heures} h · ~${c.cout.euros} €</span>
     </div>
     <p class="dep-detail">${c.detail}</p>`;
 }
@@ -889,7 +838,13 @@ async function init() {
   brancherReglages();
 
   try {
-    etat.meteo = await chargerMeteo();
+    // Le prix du carburant est un bonus : on ne fait pas attendre l'app
+    // pour lui. Promise.allSettled plutôt que await séquentiel, et un
+    // échec ne remonte jamais — coutAllerRetour retombe sur le repli.
+    const [meteo, carburant] = await Promise.allSettled([chargerMeteo(), prixDiesel()]);
+    if (meteo.status !== "fulfilled") throw meteo.reason;
+    etat.meteo = meteo.value;
+    etat.carburant = carburant.status === "fulfilled" ? carburant.value : null;
     appliquerTheme();
     afficherFraicheur(etat.meteo.recupereLe);
     rendreSemaine();

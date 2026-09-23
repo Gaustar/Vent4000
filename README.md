@@ -21,139 +21,56 @@ confiance multi-modèle, et un **conseil de déplacement** chiffré.
 > club ne se prononce — et à savoir **quand décider** : le club publie sa
 > banderole le matin même, dès 7h10.
 
-## Fonctionnalités v1
+## Ce que fait l'app
 
-- **Vue Semaine** : verdict 🟢🟠🔴 pour chaque jour d'ouverture des 7 prochains
-  jours, scindé matin (8h30-14h) / après-midi (14h-coucher du soleil).
-  J+6/J+7 estompés (fiabilité réduite).
-- **Vue Jour** : timeline horaire colorée, **profil vertical du vent**
-  (sol → 925 → 850 → 700 → 600 hPa ≈ largage 4000 m) avec direction, vitesse
-  et température par niveau, plafond nuageux estimé, rafales, CAPE, visibilité.
-- **Boussole piste** : axe 064°/244° d'EBNM + flèche du vent au sol, avec
-  composantes traversier / de face calculées.
-- **Niveaux évolutifs** : Tandem (défaut) → Élève AFF → Brevet A → Brevet B →
-  Brevet C/D, chaque niveau avec ses seuils de vent et de plafond, personnalisables.
-- **Itinéraire** : bouton Google Maps vers la DZ. L'app ne demande **aucune
-  permission** (ni géolocalisation, ni notifications) : aucun paramètre
-  `origin` n'est passé, c'est Maps qui utilise la position de l'appareil.
-- **Recoupement** : liens IRM et Windy en pied de page.
-- Thème automatique jour/nuit (basé sur le lever/coucher réel du soleil),
-  installable sur l'écran d'accueil, cache hors-ligne (dernières prévisions).
+**Écran d'accueil** — la liste des jours d'ouverture réels du club, tous au
+même niveau. L'app ne désigne plus un « meilleur créneau » : elle désignait
+souvent un vendredi ou un dimanche alors que les sauts se font surtout le
+samedi. Chaque ligne donne le verdict, la fenêtre horaire, le motif
+bloquant et la tendance depuis la dernière consultation.
 
-## Fiabilité v1.1
+**Vue Jour** — tout le détail, seulement sur le jour sélectionné :
 
-- **Confiance sur 3 modèles, toute la semaine** : DWD ICON (primaire) +
-  Météo-France AROME (J0-J3) + ECMWF IFS 0.25° open-data (J0-J7). Avant,
-  la comparaison s'arrêtait à J+3 (AROME) et l'app tournait "à l'aveugle"
-  sur la seconde moitié de la fenêtre à 7 jours.
-- **Faits vérifiés contre sources primaires** (août 2026) : coordonnées et
-  altitude d'EBNM, et surtout l'**axe de piste 064°/244°** confirmés au
-  degré près par le *Règlement d'aérodrome EBNM v004 (01/2024)* §3.1 ;
-  horaires d'ouverture confirmés sur paraclubnamur.be en direct.
-- **Tests automatisés** (`js/*.test.mjs`, Node natif, aucune dépendance) sur
-  `scoring.js` et `ouverture.js` : calcul de Pâques, calendrier d'ouverture,
-  verdicts météo, vent traversier, confiance multi-modèle. `npm test`.
+- **Conseil de déplacement** chiffré (226 km · 3 h · coût du jour) et, sur
+  les journées limites, le rappel de la barrière d'expérience du club.
+- **Timeline horaire** avec marqueur de forme (● ▲ ✕) en plus de la
+  couleur, lisible en daltonisme rouge-vert.
+- **Profil vertical du vent** : sol → 180/120/80 m AGL → 925/850/700/600 hPa
+  (≈ largage 4000 m), avec direction, vitesse et température par niveau.
+- **Spot / dérive estimée** : dérive en chute, sous voile, totale, plus le
+  cap **et la distance** à remonter depuis la zone de poser.
+- **Boussole piste** : axe 064°/244° d'EBNM, vent au sol et dérive.
+- **Confiance multi-modèle** : DWD ICON (primaire) + Météo-France AROME
+  (J0-J3) + ECMWF IFS 0.25° (J0-J7), confrontés **sur le vent moyen et sur
+  les rafales**, avec pénalité d'échéance. Un désaccord fort plafonne le
+  verdict à orange.
 
-## v1.4 — outil de décision + refonte « instrument de vol »
+**Ce qui entre dans le verdict** — vent moyen et rafales au sol, vent
+interpolé à la hauteur d'ouverture, plafond estimé, couches nuageuses par
+étage, visibilité, précipitations, CAPE, hausse rapide du vent, écart entre
+le relevé temps réel et la prévision de l'heure en cours, et l'accord entre
+modèles. Rien n'est récupéré sans servir.
 
-Détail complet dans [CHANGELOG.md](./CHANGELOG.md).
+**Niveaux** : Tandem → Élève AFF → Brevet A → Brevet B → Brevet C/D, chacun
+avec ses seuils, personnalisables dans les bornes légales.
 
-- **Correction d'un faux vert** : un ciel totalement bouché (couverture
-  100 %) ressortait VERT pour tous les niveaux, sans aucune raison
-  affichée — il passait à travers la bande « partiellement couvert »
-  (30-75 %) et le plafond estimé (3000 m) franchissait le seuil de tous
-  les niveaux. Une couche compacte (≥ 85 % sur un étage) est maintenant
-  éliminatoire, avec un message distinct pour la couche moyenne, qui
-  contient l'altitude de largage. Les cirrus, eux, ne bloquent pas.
-- **Meilleur créneau en tête** : jour, fenêtre horaire précise et chiffres
-  clés, au lieu de cartes à comparer.
-- **Fenêtres horaires** (« 14h → 17h ») et **motif bloquant par jour**,
-  visibles sans ouvrir le détail.
-- **Spot / dérive estimée** : dérive en chute, sous voile, totale, et cap
-  à remonter depuis la zone de poser, calculés sur toute la colonne de
-  vent. Hauteur d'ouverture par niveau (FFP DT49).
-- **Tendance de la prévision** : ↗ s'améliore / ↘ se dégrade depuis la
-  dernière consultation.
-- **Confiance pondérée par l'échéance** : une prévision à J+6 ne vaut pas
-  une prévision à J+1, même si les modèles s'accordent.
-- **Thème sombre « planche de bord »**, variante claire automatique en
-  journée. Vert/ambre/rouge strictement réservés aux données : l'accent
-  interactif est bleu, plus rien ne concurrence le code couleur du verdict.
+**Le reste** : aucune permission demandée (ni géolocalisation ni
+notifications), thème jour/nuit sur le lever/coucher réel, installable,
+cache hors-ligne, liens IRM / Windy / briefing du club.
 
-## Fiabilité v1.3 — seuils par brevet validés contre une source fédérale
-
-Vérification demandée explicitement : « valider les seuils suivant les brevets,
-comme le font les DZ avant d'imposer une limite ». Comparaison contre le
-document fédéral le plus pertinent trouvé — FFP, *Directive Technique n°49*
-(modifiée 15/04/2025), même nomenclature de brevets A/B/C/D que la Belgique
-francophone. Citations exactes et détail complet dans
-[CHANGELOG.md](./CHANGELOG.md).
-
-- **Correction** : le document fixe explicitement « Limite maximale de vent
-  au sol : 11 m/s » (39,6 km/h) pour le brevet B et pour le BPA (prérequis
-  des brevets C et D) — c'est le plafond le plus élevé écrit noir sur blanc
-  dans tout le document, brevets C et D inclus. Le seuil groupé
-  « Brevet B/C/D » à 46 km/h (v1.2.0) autorisait donc un brevet B à sauter
-  jusqu'à 6+ km/h au-dessus de ce plafond documenté. **Brevet B est
-  maintenant séparé, à 39 km/h** (arrondi à l'entier inférieur — jamais
-  vers le haut pour un seuil de sécurité).
-- **Brevet C/D conserve 46 km/h** : aucun chiffre fédéral explicite ne
-  couvre ce palier au-delà du BPA (autonomie complète) ; valeur cohérente
-  avec la pratique DZ généralement observée pour les jumpers très
-  expérimentés — reste à confirmer par le club, comme avant.
-- **Élève AFF (22 km/h) inchangé** : déjà sous le plafond fédéral de
-  progression (7 m/s = 25,2 km/h), marge de sécurité volontaire conservée.
-- **Tandem (28 km/h) inchangé** : cette règle FFP ne couvre pas le tandem
-  (pas un brevet de progression solo — le moniteur est aux commandes, pas
-  le passager) ; seuil laissé au jugement DZ/matériel comme avant.
-- **Brevet A (33 km/h) inchangé** : aucun chiffre fédéral explicite pour ce
-  palier précis (entre la fin de progression à 7 m/s et le brevet B à
-  11 m/s) — interpolation DZ raisonnable, non contredite par la source.
-- **Plafond nuageux minimum** : aucune source chiffrée trouvée (FFP ou
-  club) — reste une estimation DZ. Cohérence conservée avec les hauteurs
-  d'ouverture minimales documentées par la FFP, qui décroissent avec
-  l'expérience (1200 m progression/brevet A → 1000 m avant BPA → 850 m
-  après BPA/brevet B) : brevet B est donc aligné sur brevet C/D (1100 m)
-  plutôt que sur brevet A (1400 m).
-- Recherche complémentaire : le club apparaît affilié à la FWCP (Fédération
-  Wallonne des Clubs de Parachutisme, Spa) plutôt qu'à la FFP directement —
-  leur règlement technique propre n'a pas pu être consulté en ligne pour
-  confirmer ces chiffres au mot près. **À valider avec les moniteurs du
-  club**, comme le rappelle déjà l'avertissement en pied de section.
-
-## Fiabilité v1.2
-
-Revue orientée « décider comme le ferait un club/moniteur expérimenté ».
-Détail complet et sources dans [CHANGELOG.md](./CHANGELOG.md).
-
-- **La limite de vent s'applique à la rafale, pas seulement à la moyenne**
-  ("assume the worst case scenario at the time of landing" — pratique DZ
-  standard) : un vent moyen sous le seuil avec des rafales au-dessus passe
-  maintenant en rouge éliminatoire, plus en orange au mieux.
-- **Spread rafales/moyenne gradué par niveau** (élève/tandem 9 km/h,
-  Brevet A 13 km/h, Brevet B/C/D 18 km/h) plutôt qu'un seuil unique — un
-  jumper expérimenté tolère un spread plus large qu'un élève.
-- **Détection de hausse rapide du vent** d'une heure à l'autre.
-- **La confiance multi-modèle influence le verdict**, pas seulement
-  l'affichage : un fort désaccord entre modèles plafonne le verdict à
-  orange, même si les seuils bruts seraient au vert.
-- **Fraîcheur des données fiabilisée** : l'heure affichée est celle de la
-  vraie dernière réponse réseau (en-tête HTTP), pas l'horloge de
-  l'appareil — un bandeau rouge apparaît si les prévisions datent de plus
-  de 90 min (mode hors-ligne prolongé).
-- **Comparaisons d'heure ancrées sur Europe/Brussels** (pas le fuseau de
-  l'appareil), timeout réseau (15 s) avec retour clair en cas d'échec.
-- Suite de tests étendue à 42 cas (dont un nouveau `meteo.test.mjs` avec
-  fetch simulé) + CI GitHub Actions sur chaque push/PR.
-- Le **vent traversier reste volontairement informatif** (pas un seuil de
-  sécurité perso) : un parachutiste atterrit face à la manche à air, pas à
-  l'axe de piste — voir commentaire dans `scoring.js`.
+Historique détaillé version par version dans [CHANGELOG.md](./CHANGELOG.md).
 
 ## Calendrier d'ouverture encodé
 
-- Week-ends et jours fériés belges (computus de Pâques inclus) :
-  du 1er mars au 15 décembre, 8h30 → coucher du soleil.
-- Vendredis de mai à septembre : dès 16h.
+Vérifié sur paraclubnamur.be (voir §3 du cadre réglementaire) :
+
+- Week-ends et jours fériés belges (computus de Pâques inclus), du 1er mars
+  au 15 décembre. Club ouvert dès 8h30, mais **le scoring démarre à 9h00** :
+  8h30 est l'inscription, « les séances de saut débutent à 9h00 ».
+- **Pleine saison** : deux créneaux, 9h → 14h puis 14h → coucher du soleil.
+- **À partir du dernier dimanche d'octobre** (changement d'heure) : un seul
+  créneau continu, 9h → coucher du soleil.
+- Vendredis de mai à septembre : créneau unique dès 16h.
 
 ## Déploiement (GitHub Pages)
 
@@ -182,6 +99,8 @@ js/tendance.js            Évolution de la prévision entre 2 consultations (pur
 js/tendance.test.mjs      Tests (amélioration / dégradation / stable)
 js/deplacement.js         « Ça vaut le trajet ? » — coût réel + quand décider (pur)
 js/deplacement.test.mjs   Tests (jamais « pars » hors J+0, coût, fenêtre fragile)
+js/carburant.js           Prix diesel officiel du jour (Statbel / SPF Économie)
+js/carburant.test.mjs     Tests (extraction, repli réseau/cache/config)
 js/meteo.js               Fetch + parsing Open-Meteo (ICON + AROME + ECMWF)
 js/meteo.test.mjs         Tests (fetch simulé : timeout, échecs, fraîcheur)
 js/app.js                 UI et état
@@ -265,11 +184,32 @@ Le RSB §3.1 est sans ambiguïté sur sa portée :
 | Brevet B | **25 km/h** | 914 m | 1214 m | **RSB §3.4.2 — 7 m/s** (lecture conservatrice, voir ci-dessous) |
 | Brevet C/D | 46 km/h | 914 m | 1214 m | **RSB §3.4.2 — 12,86 m/s = 25 kts** |
 
-⚠ **Ambiguïté dans la source, non résolue** : le brevet B apparaît des
-**deux** côtés du barème (« jusqu'au brevet B **inclus** » et « **à partir
-du** brevet B »). L'app retient la lecture conservatrice (25 km/h) parce
-que « inclus » est explicite et qu'on n'arrondit jamais un seuil de
-sécurité vers le haut. **À faire trancher par le Responsable Technique.**
+#### L'ambiguïté du brevet B, levée par la fédération flamande
+
+Le RSB place le brevet B des **deux** côtés de son barème (« jusqu'au
+brevet B **inclus** » et « **à partir du** brevet B »). Le **Basis
+Veiligheidsreglement de la VVP** (Vlaams Verbond van Paraclubs, homologue
+flamand harmonisé avec la FWCP au sein de la FBP — cf. RSB §2.2) tranche,
+section « Wind » :
+
+> • **Tot en met B-brevet** : maximum **14 knopen**
+> • **Vanaf C-brevet** : maximum **25 knopen**
+> • Uitzondering nachtsprongen : maximum 14 knopen
+
+Soit : jusqu'au brevet B inclus → 14 kts ; 25 kts à partir du brevet **C**.
+Et 14 kts = 25,9 km/h ≈ les 7 m/s (25,2 km/h) de la FWCP — même valeur,
+autre unité. Le « à partir du brevet B » du RSB est donc très probablement
+une coquille pour « brevet C ». **Le brevet B reste à 25 km/h**, lecture
+désormais corroborée plutôt que simplement prudente.
+
+La VVP confirme également le plafond de 3000 ft AGL et la visibilité de
+3 km : les trois textes (GDF-05, RSB FWCP, BVR VVP) concordent.
+
+⚠ **Ce qu'aucun des deux règlements fédéraux ne dit** : si la limite porte
+sur la **moyenne** ou sur la **rafale**. Seul GDF-05 précise « de
+moyenne ». L'app applique le seuil de niveau à la rafale (durcissement DZ
+documenté) et la limite légale à la moyenne. **Question ouverte pour le RT
+— c'est celle qui te coûte le plus de journées.**
 
 Les **plafonds sont dérivés**, jamais posés à la main :
 `max(914 m, hauteur d'ouverture + MARGE_PLAFOND_OUVERTURE)`.
@@ -324,17 +264,21 @@ le briefing du club fait foi.
 
 ### Ce qui reste à faire confirmer par le RT
 
-1. **Brevet B : 7 m/s ou 25 kts ?** — l'ambiguïté du §3.4.2 (la question la plus importante).
-2. Le seuil **tandem** (28 km/h) : il dépasse les 25 km/h applicables à un solo jusqu'au brevet B. Cohérent avec la pratique tandem, mais à valider.
-3. La limite de vent porte-t-elle sur la **moyenne** ou sur la **rafale** ? Le RSB dit « vitesse de vent maximum au sol » sans préciser ; GDF-05 dit « moyenne ». L'app teste la rafale contre le seuil de niveau (pratique DZ) *et* la moyenne contre la limite légale.
-4. `MARGE_PLAFOND_OUVERTURE` (300 m au-dessus de l'ouverture) : suffisant ?
-5. `ventOuvertureOrange` (40 km/h à la hauteur d'ouverture) : bon ordre de grandeur pour une voile école ?
+Classé par impact réel sur les journées affichées :
+
+1. 🔴 **Moyenne ou rafale ?** Ni le RSB ni le BVR ne le précisent ; seul GDF-05 dit « moyenne ». L'app teste la **rafale** contre le seuil de niveau — plus strict que le texte, donc des journées légales sortent rouges. C'est le réglage qui coûte le plus de week-ends.
+2. 🔴 **`MARGE_PLAFOND_OUVERTURE` = 300 m.** Aucune source ne fixe de plafond nuageux par niveau ; cette marge est un choix de conception, et elle détermine tous les `plafondMin`.
+3. 🟠 **`ventOuvertureOrange` = 40 km/h** à la hauteur d'ouverture. Règle de bon sens (une voile école avance à 35-45 km/h), sans source fédérale. Dégrade seulement en orange.
+4. 🟠 **Tandem 28 km/h** : hors barème FWCP, et au-dessus des 25 km/h d'un solo jusqu'au brevet B.
+5. ⚪️ **Brevet B** : levé par le BVR VVP (voir ci-dessus), mais autant le faire confirmer.
 
 ## Sources
 
 - **[Circulaire CIR/GDF-05 Éd. 4 (03/06/2016)](https://mobilit.belgium.be/fr/regulation/circulaire-gdf-05)** — DGTA / SPF Mobilité et Transports. **Source légale applicable en Belgique** : §6, conditions météo des sauts (25 kts moyen, 3000 ft, 3000 m). Copie archivée dans [`docs/`](./docs/).
 - **[FWCP — Règlement de Sécurité de Base v2.1 (juin 2026)](https://fwcp.be/learning-hub/safety/rsb)** — **source fédérale applicable au Paraclub de Namur** : §3.4.2 vent par brevet, §3.4.1 visibilité/nuages, §3.5 altitudes de sécurité. Copie archivée dans [`docs/`](./docs/).
+- **[VVP — Basis Veiligheidsreglement](https://docs.google.com/document/d/e/2PACX-1vQopCCA2u-XuuWaWGqB43-DJXsBG-JFCEcaUkdsIsax71XARH3qG4CmEkTz3be8gdH4YoQKBFrzCaiR/pub)** (Vlaams Verbond van Paraclubs) — homologue flamand harmonisé avec la FWCP au sein de la FBP. Lève l'ambiguïté du brevet B (« Tot en met B-brevet : 14 knopen / Vanaf **C**-brevet : 25 knopen ») et confirme 3000 ft / 3 km. ⚠ Document vivant publié via Google Docs, susceptible d'évoluer sans historique : citation relevée le 2026-09-23.
 - [paraclubnamur.be](https://paraclubnamur.be) — saison, créneaux, heure réelle de début des séances, journées continues de fin octobre, hauteur d'ouverture élève.
+- **[Statbel — Tarif officiel des produits pétroliers](https://bestat.statbel.fgov.be/bestat/crosstable.xhtml?view=9e9cf394-6c54-4d81-8013-7124a8c4bf15)** (Direction générale de l'Énergie, SPF Économie) — prix maximum légal du diesel B7, mis à jour quotidiennement, CC BY 4.0. Consommé en direct par l'app.
 - [FFP — Directive Technique n°49](https://www.ffp.asso.fr/wp-content/uploads/2025/04/Directive-Technique-49-modifiee-15-avril-2025.pdf) — fédération **française**, utilisée en substitution jusqu'en v1.5.0, **remplacée** par le RSB FWCP en v1.6.0. Conservée ici pour la traçabilité des anciennes valeurs.
 - [USPA SIM](https://www.uspa.org/sim) — limites de vent par niveau/licence (référence USPA générale)
 - [Skydivemag — Winds Limits Part 1](https://www.skydivemag.com/new/winds-limits-part-1-what-every-skydiver-should-know/) — règle "gust = limite", spread par expérience
@@ -342,6 +286,13 @@ le briefing du club fait foi.
 
 ## Pistes v2
 
-- Alerte Telegram automatique (GitHub Actions) réutilisant `scoring.js`.
-- Prix diesel sur le trajet (voir étude de faisabilité : options légales).
+- **Alerte Telegram automatique** (GitHub Actions, cron jeudi soir)
+  réutilisant `scoring.js` et `deplacement.js` — tous deux purs et sans
+  dépendance DOM, précisément pour ça.
+- Réglage « mes sauts » pour contextualiser les verdicts orange face à la
+  barrière d'expérience du club (saisie manuelle : l'app n'a pas accès au
+  carnet de sauts).
 - Journal de sauts / progression AFF.
+
+*(Le prix du diesel sur le trajet est fait depuis la v1.8.0 — source
+officielle Statbel, cf. `js/carburant.js`.)*

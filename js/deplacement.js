@@ -46,11 +46,12 @@ export const ECHEANCE_PLANIFICATION = 3;    // jours
  * @param {number} p.duree — durée de la meilleure fenêtre, en heures
  * @param {"haute"|"moyenne"|"faible"|"unique"} p.confiance — accord multi-modèle
  * @param {number} p.echeanceJours — 0 = aujourd'hui
+ * @param {number|null} p.prixLitre — prix officiel du jour (cf. carburant.js)
  * @returns {{niveau:string, titre:string, detail:string, cout:object}}
  *   niveau ∈ "partir" | "planifier" | "reconfirmer" | "renoncer"
  */
-export function conseilDeplacement({ verdict, duree = 0, confiance = "unique", echeanceJours = 0 }) {
-  const cout = coutAllerRetour();
+export function conseilDeplacement({ verdict, duree = 0, confiance = "unique", echeanceJours = 0, prixLitre = null }) {
+  const cout = coutAllerRetour(prixLitre);
   const aujourdhui = echeanceJours === 0;
   const fenetreConfortable = duree >= DUREE_FENETRE_CONFORTABLE;
   const confianceSolide = confiance === "haute" || confiance === "moyenne";

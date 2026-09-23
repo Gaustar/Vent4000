@@ -86,12 +86,28 @@ export const NIVEAUX_PRESSION = [
 //     • Exception : sauts de nuit : maximum 7 m/sec. »
 //   → 7 m/s = 25,2 km/h ; 12,86 m/s = 46,3 km/h (= la limite GDF-05).
 //
-// ⚠⚠ AMBIGUÏTÉ DANS LA SOURCE, non résolue ici : le brevet B apparaît des
-// DEUX côtés du barème (« jusqu'au brevet B inclus » ET « à partir du
-// brevet B »). Deux lectures possibles — 25 km/h ou 46 km/h pour un
-// brevet B. On retient ici la lecture CONSERVATRICE (25 km/h), parce que
-// « inclus » est explicite et qu'on n'arrondit jamais un seuil de sécurité
-// vers le haut. **À faire trancher par le Responsable Technique du club.**
+// ⚠ AMBIGUÏTÉ DANS LA SOURCE FWCP — levée par la fédération flamande.
+// Le brevet B apparaît des DEUX côtés du barème du RSB (« jusqu'au brevet
+// B inclus » ET « à partir du brevet B »), ce qui laissait le choix entre
+// 25 et 46 km/h. Le **Basis Veiligheidsreglement de la VVP** (Vlaams
+// Verbond van Paraclubs — l'homologue flamand, harmonisé avec la FWCP au
+// sein de la FBP, cf. RSB §2.2) tranche, section « Wind » :
+//   « Snelheidsbeperkingen voor grondwind :
+//     • Tot en met B-brevet : maximum 14 knopen
+//     • Vanaf C-brevet : maximum 25 knopen
+//     • Uitzondering nachtsprongen : maximum 14 knopen »
+// Soit : jusqu'au brevet B inclus → 14 kts ; à partir du brevet **C** →
+// 25 kts. Et 14 kts = 25,9 km/h ≈ les 7 m/s (25,2 km/h) de la FWCP : même
+// valeur, autre unité. Le « à partir du brevet B » du RSB est donc très
+// probablement une coquille pour « brevet C ».
+// → Le brevet B reste à 25 km/h, et ce n'est plus une prudence mais une
+// lecture corroborée. Reste à confirmer par le RT, qui peut de toute façon
+// durcir (§3.4.2).
+//
+// ⚠ Ce qu'AUCUN des deux règlements ne dit : si la limite porte sur la
+// MOYENNE ou sur la RAFALE. Seul GDF-05 précise « de moyenne ». L'app
+// applique le seuil de niveau à la rafale (durcissement DZ documenté, cf.
+// README) et la limite légale à la moyenne — question ouverte pour le RT.
 //
 // § 3.5 Altitudes de sécurité — citation exacte :
 //   « Tout parachutiste doit avoir actionné l'ouverture de son parachute
@@ -276,23 +292,33 @@ export const OUVERTURE = {
 // une journée orange se tente quand on est à 15 min, pas à 1h30.
 //
 // Distance et durée relevées sur Google Maps (Bouillon → Paraclub Namur,
-// Suarlée), itinéraire sans péage. Le prix du diesel est un plafond belge
-// officiel (SPF Économie) : à ajuster si tu fais le plein moins cher,
-// notamment côté France ou Luxembourg — tu es frontalier.
+// Suarlée), itinéraire sans péage.
+//
+// `prixCarburantDefaut` n'est qu'un REPLI : le prix réel est récupéré
+// chaque jour auprès de Statbel / SPF Économie (cf. js/carburant.js). Le
+// diesel belge ayant pris plus de 40 % en un an, une valeur figée dans le
+// code devient fausse en quelques semaines et fausse tout l'arbitrage.
 export const TRAJET = {
   distanceAllerKm: 113,
   dureeAllerMin: 90,
-  consoL100: 6,        // L/100 km — hypothèse, à ajuster
-  prixCarburant: 2.50, // €/L — diesel B7, plafond belge (record 09/2026)
+  consoL100: 6,              // L/100 km — hypothèse véhicule, à ajuster
+  prixCarburantDefaut: 2.50, // €/L — diesel B7 TTC au 23/09/2026 (repli)
 };
 
-/** Coût et temps d'un aller-retour raté. */
-export function coutAllerRetour() {
+/**
+ * Coût et temps d'un aller-retour raté.
+ * @param {number|null} prixLitre — prix officiel du jour ; null → repli config
+ */
+export function coutAllerRetour(prixLitre = null) {
   const km = TRAJET.distanceAllerKm * 2;
+  const prix = (typeof prixLitre === "number" && prixLitre > 0)
+    ? prixLitre
+    : TRAJET.prixCarburantDefaut;
   return {
     km,
     minutes: TRAJET.dureeAllerMin * 2,
-    euros: Math.round(km * (TRAJET.consoL100 / 100) * TRAJET.prixCarburant),
+    prixLitre: prix,
+    euros: Math.round(km * (TRAJET.consoL100 / 100) * prix),
   };
 }
 
@@ -308,4 +334,4 @@ export const LIENS = {
   briefing: "https://pro.paraclubnamur.be/fr/meteo",
 };
 
-export const VERSION = "1.7.0";
+export const VERSION = "1.8.0";
