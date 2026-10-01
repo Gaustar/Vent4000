@@ -10,8 +10,9 @@ tentative. Une journée orange qu'on tenterait sans réfléchir en habitant à
 15 minutes devient un pari à 34 €.
 
 L'app affiche donc, pour chaque jour d'ouverture réel du club : le verdict
-par rapport aux **seuils officiels belges**, la fenêtre horaire, la
-confiance multi-modèle, et un **conseil de déplacement** chiffré.
+par rapport aux **seuils officiels belges**, la **probabilité de saut**
+(vote de 7 modèles et 122 scénarios d'ensemble), la fenêtre horaire, et un
+**conseil de déplacement** chiffré.
 
 > ⚠ **Ce que l'app ne fait pas.** Elle ne remplace pas le verdict du club.
 > Le RSB FWCP autorise explicitement le Responsable Technique à durcir les
@@ -21,42 +22,78 @@ confiance multi-modèle, et un **conseil de déplacement** chiffré.
 > club ne se prononce — et à savoir **quand décider** : le club publie sa
 > banderole le matin même, dès 7h10.
 
-## Ce que fait l'app
+## Ce que fait l'app (v2.0)
 
-**Écran d'accueil** — la liste des jours d'ouverture réels du club, tous au
-même niveau. L'app ne désigne plus un « meilleur créneau » : elle désignait
-souvent un vendredi ou un dimanche alors que les sauts se font surtout le
-samedi. Chaque ligne donne le verdict, la fenêtre horaire, le motif
-bloquant et la tendance depuis la dernière consultation.
+**Écran d'accueil** — l'observation réelle de Charleroi (METAR), puis une
+carte par jour d'ouverture : verdict, **probabilité de saut** sur la
+meilleure fenêtre, fenêtre horaire, motif dominant, tendance depuis la
+dernière consultation, et une **bande horaire** (une barre par heure,
+couleur = verdict, hauteur = probabilité).
 
-**Vue Jour** — tout le détail, seulement sur le jour sélectionné :
+**Vue Jour** :
 
-- **Conseil de déplacement** chiffré (226 km · 3 h · coût du jour) et, sur
-  les journées limites, le rappel de la barrière d'expérience du club.
-- **Timeline horaire** avec marqueur de forme (● ▲ ✕) en plus de la
-  couleur, lisible en daltonisme rouge-vert.
-- **Profil vertical du vent** : sol → 180/120/80 m AGL → 925/850/700/600 hPa
-  (≈ largage 4000 m), avec direction, vitesse et température par niveau.
-- **Spot / dérive estimée** : dérive en chute, sous voile, totale, plus le
-  cap **et la distance** à remonter depuis la zone de poser.
-- **Boussole piste** : axe 064°/244° d'EBNM, vent au sol et dérive.
-- **Confiance multi-modèle** : DWD ICON (primaire) + Météo-France AROME
-  (J0-J3) + ECMWF IFS 0.25° (J0-J7), confrontés **sur le vent moyen et sur
-  les rafales**, avec pénalité d'échéance. Un désaccord fort plafonne le
-  verdict à orange.
+- **Verdict + probabilité** du jour, créneaux, **conseil de déplacement**
+  chiffré (226 km · 3 h · prix du diesel du jour), rappel de la barrière
+  d'expérience du club sur les journées limites.
+- **Tableau horaire** : une colonne par heure, une ligne par paramètre
+  (verdict, probabilité, vent, direction, rafales, gradient en finale, vent
+  à l'ouverture, vent au largage, plafond, visibilité, pluie, CAPE, T° à
+  4000 m, isotherme 0 °C). Chaque case est colorée par son statut : on voit
+  d'un coup d'œil **quel paramètre** bloque **à quelle heure**.
+- **Détail de l'heure** : raisons du verdict, puis tous les facteurs avec
+  valeur, statut et explication (marqués « légal » ou « arbitré »).
+- **Consensus des modèles** : probabilité, vote de chacun des 7 modèles
+  (vent/rafales), scénarios d'ensemble favorables, part des votes
+  défavorables par critère.
+- **Profil vertical** sol → 4200 m : couverture nuageuse, vent et
+  température par niveau, plafond analysé, altitude de largage possible.
+- **Spot** : dérive en chute / sous voile / totale, cap et distance à
+  remonter, **séparation entre groupes** estimée, boussole piste 064°/244°.
 
-**Ce qui entre dans le verdict** — vent moyen et rafales au sol, vent
-interpolé à la hauteur d'ouverture, plafond estimé, couches nuageuses par
-étage, visibilité, précipitations, CAPE, hausse rapide du vent, écart entre
-le relevé temps réel et la prévision de l'heure en cours, et l'accord entre
-modèles. Rien n'est récupéré sans servir.
+### Comment le verdict est calculé
+
+1. **Facteurs** (`js/facteurs.js`) — chaque paramètre est évalué séparément
+   sur le modèle principal (ICON-D2 2 km puis ICON-EU) :
+
+   | Facteur | Limite (orange) | Bloquant (rouge) |
+   |---|---|---|
+   | Vent moyen sol | > 80 % du seuil, hausse > 8 km/h/h | > seuil ; > 46 km/h (légal) |
+   | Rafales | écart rafale/moyenne > seuil du niveau | > seuil du niveau |
+   | Gradient 10 m → 180 m | différence vectorielle > 25 km/h | — |
+   | Vent à l'ouverture | > 40 km/h | — |
+   | Vent au largage | > 90 km/h (spot, séparation) | — |
+   | Plafond (9 niveaux) | largage possible < 3000 m | < plafond du niveau ; < 914 m (légal) |
+   | Visibilité / brouillard | < 5 km, bancs de brouillard | < 3 km (légal) |
+   | Précipitations | bruine, proba ≥ 60 % | > 0,2 mm/h |
+   | Orage | CAPE ≥ 400, LI ≤ -3, éclairs possibles, CAPE forte verrouillée par CIN | code orage, éclairs ≥ 1 J/kg, CAPE ≥ 800 |
+   | Thermiques | couche limite ≥ 1500 m + CAPE ≥ 150 (élève) | — |
+   | Froid au largage | ≤ -15 °C | — |
+   | Givrage avion | couche nuageuse entre 0 et -15 °C sous 4000 m | — |
+   | Observation METAR (heure en cours) | CB, précipitations, écart prévision > 10 km/h | rafales/plafond/visibilité observés hors seuil, orage |
+
+2. **Probabilité** (`js/probabilite.js`) — 7 modèles déterministes (ICON-D2,
+   AROME HD, HARMONIE KNMI à 2-2,5 km, poids 3 ; ECMWF IFS, ICON-EU, UKMO,
+   GFS, poids 2) et 122 membres d'ensemble (ICON-EPS, ECMWF-ENS, GEFS ;
+   poids total 6 → 14 selon l'échéance, chaque ensemble à part égale)
+   votent « sautable » ou non sur vent moyen, rafales, pluie et couche
+   basse. La part pondérée des oui est la probabilité.
+
+3. **Combinaison** (`js/scoring.js`) :
+   - facteur bloquant **ferme** (plafond, visibilité, orage, observation…) → rouge ;
+   - facteur bloquant **probabiliste** (vent, rafales, pluie du modèle
+     principal) → rouge seulement si la probabilité est aussi < 35 %, sinon
+     orange « arbitré » : le modèle principal est un vote parmi d'autres ;
+   - **plafond** bas → orange arbitré s'il est démenti par la majorité des
+     modèles, ou par l'observation de Charleroi (heure en cours et 2 suivantes) ;
+   - probabilité < 35 % → rouge ; < 70 % ou facteur limite → orange ; sinon vert.
+   - Un créneau est sautable s'il offre **2 h consécutives**.
 
 **Niveaux** : Tandem → Élève AFF → Brevet A → Brevet B → Brevet C/D, chacun
 avec ses seuils, personnalisables dans les bornes légales.
 
-**Le reste** : aucune permission demandée (ni géolocalisation ni
-notifications), thème jour/nuit sur le lever/coucher réel, installable,
-cache hors-ligne, liens IRM / Windy / briefing du club.
+**Le reste** : aucune permission demandée, thème jour/nuit sur le
+lever/coucher réel, installable, cache hors-ligne, l'observation METAR
+chargée à part (n'attend jamais), liens IRM / Windy / briefing du club.
 
 Historique détaillé version par version dans [CHANGELOG.md](./CHANGELOG.md).
 
@@ -86,31 +123,28 @@ Aucun build, aucune dépendance, aucune clé API.
 
 ```
 index.html                Page unique, 3 vues (Semaine / Jour / Réglages)
-css/style.css             Thèmes jour/nuit, profil vertical, boussole
-js/config.js              DZ, piste, niveaux/seuils, liens
-js/config.test.mjs        Tests (invariants des seuils par brevet)
-js/ouverture.js           Calendrier du club (pur, testable en Node)
-js/ouverture.test.mjs     Tests (Pâques, fériés, créneaux)
-js/scoring.js             Moteur « ça saute ? » (pur, testable en Node)
-js/scoring.test.mjs       Tests (verdicts, rafales, nuages, fenêtres, confiance)
+css/style.css             Thèmes jour/nuit, cartes, tableau horaire, profil
+js/config.js              DZ, piste, niveaux/seuils, modèles, poids, liens
+js/meteo.js               Acquisition : principal + 7 modèles + ensembles + METAR
+js/metar.js               Lecture d'un METAR brut (pur)
+js/nuages.js              Couches nuageuses, plafond, largage possible, givrage (pur)
+js/facteurs.js            Un facteur par paramètre météo, avec statut (pur)
+js/probabilite.js         Vote pondéré modèles + ensembles (pur)
+js/scoring.js             Combinaison → verdict, fenêtres sautables (pur)
 js/spot.js                Estimation de dérive / spot (pur)
-js/spot.test.mjs          Tests (intégration du vent, caps, hypothèses)
+js/ouverture.js           Calendrier du club (pur)
 js/tendance.js            Évolution de la prévision entre 2 consultations (pur)
-js/tendance.test.mjs      Tests (amélioration / dégradation / stable)
 js/deplacement.js         « Ça vaut le trajet ? » — coût réel + quand décider (pur)
-js/deplacement.test.mjs   Tests (jamais « pars » hors J+0, coût, fenêtre fragile)
 js/carburant.js           Prix diesel officiel du jour (Statbel / SPF Économie)
-js/carburant.test.mjs     Tests (extraction, repli réseau/cache/config)
-js/meteo.js               Fetch + parsing Open-Meteo (ICON + AROME + ECMWF)
-js/meteo.test.mjs         Tests (fetch simulé : timeout, échecs, fraîcheur)
+js/*.test.mjs             128 tests Node (npm test), dont moteur.test.mjs pour la v2
 js/app.js                 UI et état
-sw.js                     Service worker (offline)
-docs/                     Sources réglementaires archivées (CIR/GDF-05)
+sw.js                     Service worker (offline, réseau d'abord pour la météo)
+docs/                     Sources réglementaires archivées (CIR/GDF-05, RSB FWCP)
 .github/workflows/test.yml  CI : npm test sur chaque push/PR
 CHANGELOG.md              Historique détaillé des versions
 ```
 
-`scoring.js` et `ouverture.js` sont **sans dépendance DOM** : ils seront
+Tout le moteur (`facteurs`, `nuages`, `probabilite`, `scoring`, `ouverture`) est **sans dépendance DOM** : ils seront
 importés tels quels par le futur script d'alerte Telegram (GitHub Actions,
 cron jeudi/vendredi soir) — une seule source de vérité pour les seuils.
 
@@ -268,15 +302,18 @@ Classé par impact réel sur les journées affichées :
 
 1. 🔴 **Moyenne ou rafale ?** Ni le RSB ni le BVR ne le précisent ; seul GDF-05 dit « moyenne ». L'app teste la **rafale** contre le seuil de niveau — plus strict que le texte, donc des journées légales sortent rouges. C'est le réglage qui coûte le plus de week-ends.
 2. 🔴 **`MARGE_PLAFOND_OUVERTURE` = 300 m.** Aucune source ne fixe de plafond nuageux par niveau ; cette marge est un choix de conception, et elle détermine tous les `plafondMin`.
-3. 🟠 **`ventOuvertureOrange` = 40 km/h** à la hauteur d'ouverture. Règle de bon sens (une voile école avance à 35-45 km/h), sans source fédérale. Dégrade seulement en orange.
-4. 🟠 **Tandem 28 km/h** : hors barème FWCP, et au-dessus des 25 km/h d'un solo jusqu'au brevet B.
-5. ⚪️ **Brevet B** : levé par le BVR VVP (voir ci-dessus), mais autant le faire confirmer.
+3. 🟠 **Seuils de probabilité (70 % / 35 %) et nouveaux seuils v2.0** (gradient 25 km/h, vent au largage 90 km/h, froid -15 °C, givrage) : choix de conception documentés dans `config.js`, tous dégradants (orange) sauf la probabilité < 35 %.
+4. 🟠 **`ventOuvertureOrange` = 40 km/h** à la hauteur d'ouverture. Règle de bon sens (une voile école avance à 35-45 km/h), sans source fédérale. Dégrade seulement en orange.
+5. 🟠 **Tandem 28 km/h** : hors barème FWCP, et au-dessus des 25 km/h d'un solo jusqu'au brevet B.
+6. ⚪️ **Brevet B** : levé par le BVR VVP (voir ci-dessus), mais autant le faire confirmer.
 
 ## Sources
 
 - **[Circulaire CIR/GDF-05 Éd. 4 (03/06/2016)](https://mobilit.belgium.be/fr/regulation/circulaire-gdf-05)** — DGTA / SPF Mobilité et Transports. **Source légale applicable en Belgique** : §6, conditions météo des sauts (25 kts moyen, 3000 ft, 3000 m). Copie archivée dans [`docs/`](./docs/).
 - **[FWCP — Règlement de Sécurité de Base v2.1 (juin 2026)](https://fwcp.be/learning-hub/safety/rsb)** — **source fédérale applicable au Paraclub de Namur** : §3.4.2 vent par brevet, §3.4.1 visibilité/nuages, §3.5 altitudes de sécurité. Copie archivée dans [`docs/`](./docs/).
 - **[VVP — Basis Veiligheidsreglement](https://docs.google.com/document/d/e/2PACX-1vQopCCA2u-XuuWaWGqB43-DJXsBG-JFCEcaUkdsIsax71XARH3qG4CmEkTz3be8gdH4YoQKBFrzCaiR/pub)** (Vlaams Verbond van Paraclubs) — homologue flamand harmonisé avec la FWCP au sein de la FBP. Lève l'ambiguïté du brevet B (« Tot en met B-brevet : 14 knopen / Vanaf **C**-brevet : 25 knopen ») et confirme 3000 ft / 3 km. ⚠ Document vivant publié via Google Docs, susceptible d'évoluer sans historique : citation relevée le 2026-09-23.
+- **[Open-Meteo](https://open-meteo.com)** — prévisions déterministes (ICON-D2, AROME HD, HARMONIE, ECMWF IFS, ICON-EU, UKMO, GFS) et ensembles (ICON-EPS, ECMWF-ENS, GEFS), niveaux de pression, CAPE/CIN, potentiel d'éclairs. Gratuit, sans clé, CORS ouvert.
+- **[Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/request/download.phtml)** — archive mondiale des METAR (EBCI Charleroi), CORS ouvert.
 - [paraclubnamur.be](https://paraclubnamur.be) — saison, créneaux, heure réelle de début des séances, journées continues de fin octobre, hauteur d'ouverture élève.
 - **[Statbel — Tarif officiel des produits pétroliers](https://bestat.statbel.fgov.be/bestat/crosstable.xhtml?view=9e9cf394-6c54-4d81-8013-7124a8c4bf15)** (Direction générale de l'Énergie, SPF Économie) — prix maximum légal du diesel B7, mis à jour quotidiennement, CC BY 4.0. Consommé en direct par l'app.
 - [FFP — Directive Technique n°49](https://www.ffp.asso.fr/wp-content/uploads/2025/04/Directive-Technique-49-modifiee-15-avril-2025.pdf) — fédération **française**, utilisée en substitution jusqu'en v1.5.0, **remplacée** par le RSB FWCP en v1.6.0. Conservée ici pour la traçabilité des anciennes valeurs.

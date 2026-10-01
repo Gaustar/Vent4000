@@ -1,34 +1,106 @@
 // ============================================================
-// Vent4000 — Moteur de score « ça saute ? »
-// Module 100 % pur (aucune dépendance DOM ni fetch) :
-// réutilisable tel quel dans un script Node (alerte Telegram v2).
+// Vent4000 — Moteur de verdict « ça saute ? » (v2.0)
+// Module 100 % pur (aucune dépendance DOM ni fetch).
 //
-// Verdicts : "vert" | "orange" | "rouge"
-// Étage 1 — éliminatoires  → rouge direct
-// Étage 2 — dégradants     → orange
-// Sinon                    → vert
+// Une heure est jugée en deux temps :
+//  1. FACTEURS (facteurs.js) — chaque paramètre météo du modèle principal,
+//     plus l'observation METAR pour l'heure en cours : bloquant / limite.
+//  2. PROBABILITÉ (probabilite.js) — vote de 7 modèles et 122 membres
+//     d'ensemble sur les critères décisifs (vent, rafales, pluie, couche
+//     basse).
+//
+// Règles de combinaison :
+//  - un facteur bloquant FERME (plafond, visibilité, orage, observation…)
+//    → rouge, quoi que disent les votes ;
+//  - un facteur bloquant PROBABILISTE (vent, rafales, pluie du modèle
+//    principal) → rouge seulement si la probabilité est aussi sous le seuil
+//    rouge ; sinon il devient « limite » : le modèle principal est un vote
+//    parmi d'autres, pas un oracle ;
+//  - probabilité < 35 % → rouge ; < 70 % ou facteur limite → orange ;
+//  - sinon vert.
 // ============================================================
 
-import { SEUILS_COMMUNS, DZ, LEGAL_BE } from "./config.js";
-import { profilVent, ventAAltitude } from "./spot.js";
+import { DZ, PROBA, METAR } from "./config.js";
+import { evaluerFacteurs } from "./facteurs.js";
+import { probabiliteSaut, critereLimitant, accordCoucheBasse } from "./probabilite.js";
+import { ageMetar } from "./metar.js";
+export { plafondEstime } from "./nuages.js";
+
+const LIBELLE_CRITERE = { vent: "vent moyen", rafales: "rafales", pluie: "pluie", nuages: "couche basse" };
 
 /**
- * Plafond nuageux estimé en m AGL.
- * Base convective ≈ 122 m par °C d'écart température / point de rosée,
- * pondérée par les couches nuageuses réelles :
- *  - couche basse marquée  → la base estimée fait foi
- *  - couche moyenne marquée→ plafond ≈ 3000 m
- *  - ciel peu couvert      → plafond illimité (Infinity)
+ * Score d'une heure.
+ * @param {object} h — heure normalisée (cf. meteo.js) + `ventPrecedent`,
+ *   `metar` (heure en cours) optionnels
+ * @param {object} seuils — { ventMax, plafondMin, ecartRafalesOrange, hauteurOuverture, eleve? }
+ * @param {{echeanceJours?:number}} [ctx]
+ * @returns {{verdict, raisons:string[], facteurs, proba, chance:number|null, plafond:number, nuages}}
+ *   `chance` = probabilité de saut affichable (0 si un facteur ferme bloque).
  */
-export function plafondEstime(h) {
-  const ecart = Math.max(0, (h.t2m ?? 0) - (h.pointRosee ?? 0));
-  const base = Math.round(122 * ecart);
-  const bas = h.nuagesBas ?? 0;
-  const moyen = h.nuagesMoyens ?? 0;
-  if (bas >= 40) return base;
-  if (moyen >= 60) return Math.max(base, 3000);
-  if (bas + moyen < 25) return Infinity;
-  return Math.max(base, 3000);
+export function scoreHeure(h, seuils, ctx = {}) {
+  const facteurs = evaluerFacteurs(h, seuils);
+  const nuages = facteurs.nuages;
+  const proba = probabiliteSaut(h, seuils, ctx.echeanceJours ?? h.echeanceJours ?? 0);
+
+  // Arbitrage des blocages probabilistes par le vote.
+  if (proba && proba.p >= PROBA.rouge) {
+    for (const x of facteurs) {
+      if (x.statut === "bloquant" && x.probabiliste) {
+        x.statut = "limite";
+        x.arbitre = true;
+        x.motif = `${x.motif} selon le modèle principal — ${Math.round(proba.p * 100)} % des modèles favorables`;
+      }
+    }
+  }
+
+  // Arbitrage du plafond. Un plafond bas n'est retenu comme bloquant que
+  // s'il est corroboré : par la majorité des modèles (couche basse), et
+  // pas démenti par l'observation réelle de Charleroi dans les 2 heures
+  // (la persistance d'une observation bat la prévision à très court terme).
+  const plafond = facteurs.find((x) => x.id === "plafond");
+  if (plafond?.statut === "bloquant") {
+    const accord = accordCoucheBasse(h);
+    const m = h.metar;
+    const obsFraiche = m && ageMetar(m, h.maintenant ?? new Date()) <= METAR.ageMaxMin + 60 * (h.metarDecalage ?? 0);
+    if (obsFraiche && m.plafond >= seuils.plafondMin && (m.visibilite ?? 10000) >= 5000 && (h.metarDecalage ?? 0) <= 2) {
+      plafond.statut = "limite";
+      plafond.arbitre = true;
+      plafond.motif = `${plafond.motif} prévu, mais ${METAR.nom} n'observe ${m.plafond === Infinity ? "aucun plafond" : `qu'un plafond à ${Math.round(m.plafond)} m`}`;
+    } else if (accord && accord.n >= 3 && accord.part < 0.5 && nuages.plafond < 2000) {
+      plafond.statut = "limite";
+      plafond.arbitre = true;
+      plafond.motif = `${plafond.motif} selon le modèle principal — couche basse prévue par ${Math.round(accord.part * 100)} % des modèles`;
+    }
+  }
+
+  const bloquants = facteurs.filter((x) => x.statut === "bloquant");
+  const limites = facteurs.filter((x) => x.statut === "limite");
+  const pct = proba ? Math.round(proba.p * 100) : null;
+  const critere = LIBELLE_CRITERE[critereLimitant(proba)];
+  const raisonProba = proba
+    ? `Probabilité de saut ${pct} %${critere ? ` — en cause : ${critere}` : ""}`
+    : null;
+
+  let verdict;
+  let raisons;
+  if (bloquants.length) {
+    verdict = "rouge";
+    raisons = bloquants.map((x) => x.motif);
+  } else if (proba && proba.p < PROBA.rouge) {
+    verdict = "rouge";
+    raisons = [raisonProba, ...limites.map((x) => x.motif)];
+  } else if (limites.length || (proba && proba.p < PROBA.vert)) {
+    verdict = "orange";
+    raisons = [...limites.map((x) => x.motif)];
+    if (proba && proba.p < PROBA.vert) raisons.unshift(raisonProba);
+  } else {
+    verdict = "vert";
+    raisons = [];
+  }
+
+  const fermeBloque = bloquants.some((x) => !x.probabiliste);
+  const chance = proba ? (fermeBloque ? 0 : proba.p) : null;
+  return { verdict, raisons, facteurs, proba, chance, plafond: nuages.plafond, nuages };
 }
 
 /**
@@ -50,117 +122,6 @@ export function ventPiste(vitesse, direction, qfu = DZ.qfu) {
     traversier: Math.abs(Math.round(vitesse * Math.sin(delta))),
     face: Math.abs(Math.round(vitesse * Math.cos(delta))),
   };
-}
-
-/**
- * Score d'une heure.
- * @param {object} h — { vent10, rafales10, direction10, t2m, pointRosee,
- *   precip, probaPluie, nuagesBas, nuagesMoyens, nuagesHauts, visibilite, cape,
- *   ventPrecedent?, comparaisons? }
- *   `ventPrecedent` (optionnel) : vent moyen de l'heure précédente, pour
- *   détecter une hausse rapide. `comparaisons` (optionnel) : voir
- *   `niveauConfiance` — permet de dégrader le verdict si les modèles
- *   météo divergent fortement pour cette heure.
- * @param {object} seuils — { ventMax, plafondMin, ecartRafalesOrange } du niveau de pratique
- * @returns {{verdict:string, raisons:string[], plafond:number}}
- */
-export function scoreHeure(h, seuils) {
-  const C = SEUILS_COMMUNS;
-  const raisons = [];
-  const plafond = plafondEstime(h);
-  const ecartRafalesOrange = seuils.ecartRafalesOrange ?? 10;
-
-  // --- Étage 0 : limites LÉGALES belges ----------------------
-  // CIR/GDF-05 §6 (cf. LEGAL_BE dans config.js). Testées séparément des
-  // seuils de niveau et avec leur propre motif : « au-dessus de ton
-  // seuil perso » et « interdit par la loi » ne se disent pas pareil.
-  // Le point (c) de la circulaire porte sur la MOYENNE au sol — pas sur
-  // la rafale, qui relève du durcissement de niveau ci-dessous.
-  // Les réglages étant bornés à ces valeurs (app.js / index.html), ces
-  // tests ne devraient jamais être le seul motif : c'est un garde-fou
-  // structurel, pour qu'aucune évolution future des seuils ne puisse
-  // produire un feu vert sur un saut illégal.
-  if ((h.vent10 ?? 0) > LEGAL_BE.ventMoyenMaxSol)
-    raisons.push(`Vent moyen ${Math.round(h.vent10)} km/h — hors limite légale (25 kts)`);
-  if (plafond < LEGAL_BE.plafondMinAGL)
-    raisons.push(`Plafond ~${plafond} m — sous le minimum légal (3000 ft)`);
-  if (h.visibilite != null && h.visibilite < LEGAL_BE.visibiliteMin)
-    raisons.push("Visibilité < 3 km — sous le minimum légal");
-
-  // --- Étage 1 : éliminatoires -------------------------------
-  if ((h.precip ?? 0) > C.precipMax) raisons.push("Pluie");
-  if ((h.probaPluie ?? 0) >= C.probaPluieMax) raisons.push("Forte proba de pluie");
-  if ((h.cape ?? 0) >= C.capeRouge) raisons.push("Risque orageux (CAPE)");
-  // Ciel bouché : une couche compacte empêche le largage VFR, même si la
-  // base estimée est haute. Testé par étage (voir config.js).
-  if ((h.nuagesMoyens ?? 0) >= C.nuagesBoucheRouge)
-    raisons.push("Couche compacte à l'altitude de largage");
-  else if ((h.nuagesBas ?? 0) >= C.nuagesBoucheRouge)
-    raisons.push("Ciel bouché (couche basse)");
-  if (plafond < seuils.plafondMin && plafond >= LEGAL_BE.plafondMinAGL)
-    raisons.push(`Plafond ~${plafond} m`);
-  if ((h.vent10 ?? 0) > seuils.ventMax && (h.vent10 ?? 0) <= LEGAL_BE.ventMoyenMaxSol)
-    raisons.push(`Vent ${Math.round(h.vent10)} km/h`);
-  // La limite de NIVEAU s'applique à la rafale : c'est la rafale qui
-  // compte au moment de l'atterrissage ("assume the worst case scenario
-  // at the time of landing" — pratique DZ standard, cf. README). À
-  // distinguer du test légal ci-dessus, qui porte sur la moyenne.
-  if ((h.rafales10 ?? 0) > seuils.ventMax)
-    raisons.push(`Rafales ${Math.round(h.rafales10)} km/h (> seuil)`);
-  if (raisons.length) return { verdict: "rouge", raisons, plafond };
-
-  // --- Étage 2 : dégradants ----------------------------------
-  if ((h.vent10 ?? 0) > seuils.ventMax * C.ventOrangeRatio)
-    raisons.push("Vent proche du seuil");
-  const ecartRafales = (h.rafales10 ?? 0) - (h.vent10 ?? 0);
-  if (ecartRafales > ecartRafalesOrange)
-    raisons.push(`Rafales +${Math.round(ecartRafales)} km/h`);
-  if (h.ventPrecedent != null) {
-    const hausse = (h.vent10 ?? 0) - h.ventPrecedent;
-    if (hausse > C.tendanceHausseOrange)
-      raisons.push(`Vent en hausse rapide (+${Math.round(hausse)} km/h en 1h)`);
-  }
-  // Vent en altitude : la colonne de vent entre enfin dans la décision.
-  // On la lit à la hauteur d'ouverture du niveau, là où le parachutiste
-  // doit pouvoir revenir vers la zone de poser sous voile.
-  if (seuils.hauteurOuverture) {
-    const ventOuverture = ventAAltitude(profilVent(h), seuils.hauteurOuverture);
-    if (ventOuverture != null && ventOuverture > C.ventOuvertureOrange)
-      raisons.push(`Vent ${Math.round(ventOuverture)} km/h à l'ouverture (${seuils.hauteurOuverture} m)`);
-  }
-  // Le relevé temps réel contredit la prévision de cette même heure : la
-  // prévision est en train de se tromper, maintenant.
-  if (h.ventActuel != null && h.vent10 != null) {
-    const ecart = Math.abs(h.ventActuel - h.vent10);
-    if (ecart > C.ecartNowcastOrange)
-      raisons.push(`Relevé actuel ${Math.round(h.ventActuel)} km/h vs ${Math.round(h.vent10)} prévus`);
-  }
-  const couverture = (h.nuagesBas ?? 0) + (h.nuagesMoyens ?? 0);
-  if (couverture >= C.nuagesOrangeMin) raisons.push("Ciel partiellement couvert");
-  if ((h.cape ?? 0) >= C.capeOrange) raisons.push("Instabilité (CAPE)");
-  // Légal (≥ 3 km) mais marge mince : marge de confort DZ, pas un interdit.
-  if (h.visibilite != null && h.visibilite < C.visibiliteConfort)
-    raisons.push(`Visibilité ${(h.visibilite / 1000).toFixed(0)} km`);
-  if (raisons.length) return { verdict: "orange", raisons, plafond };
-
-  // Confiance faible entre modèles : pas d'éléments franchement dégradants,
-  // mais la prévision elle-même n'est pas fiable → on ne peut pas conclure
-  // au vert en confiance. Un para prudent revérifierait avant de conclure.
-  if (h.comparaisons) {
-    const confiance = niveauConfiance(h.vent10, [
-      { nom: "AROME", vent: h.comparaisons.arome?.vent, rafales: h.comparaisons.arome?.rafales },
-      { nom: "ECMWF", vent: h.comparaisons.ecmwf?.vent, rafales: h.comparaisons.ecmwf?.rafales },
-    ], h.echeanceJours ?? 0, h.rafales10);
-    if (confiance.niveau === "faible") {
-      return {
-        verdict: "orange",
-        raisons: [`Modèles météo divergents (écart ${confiance.ecart} km/h) — à revérifier`],
-        plafond,
-      };
-    }
-  }
-
-  return { verdict: "vert", raisons: [], plafond };
 }
 
 /**
@@ -235,48 +196,4 @@ export function meilleurVerdict(verdicts) {
   if (verdicts.includes("vert")) return "vert";
   if (verdicts.includes("orange")) return "orange";
   return "rouge";
-}
-
-/**
- * Niveau de confiance basé sur deux facteurs :
- *  1. l'accord entre modèles météo indépendants pour le vent au sol
- *     (DWD ICON = primaire, + Météo-France AROME sur J0-J3,
- *     + ECMWF IFS sur les 7 jours) ;
- *  2. l'échéance — une prévision à J+6 ne vaut pas une prévision à J+1,
- *     même si les modèles sont d'accord entre eux (ils peuvent l'être et
- *     se tromper ensemble). On ajoute donc une pénalité par jour.
- * @param {number} ventPrimaire
- * @param {Array<{nom:string, vent:number|null|undefined}>} autres — modèles secondaires disponibles à cette heure
- * @param {number} echeanceJours — 0 = aujourd'hui, 6 = J+6
- * @returns {{niveau:string, ecart:number|null, nModeles:number, penalite:number}}
- *   `ecart` reste l'écart réellement observé entre modèles (affichable) ;
- *   le niveau, lui, est calculé sur l'écart + pénalité d'échéance.
- */
-export function niveauConfiance(ventPrimaire, autres = [], echeanceJours = 0, rafalePrimaire = null) {
-  const C = SEUILS_COMMUNS;
-  const penalite = Math.max(0, echeanceJours - 1) * C.confiancePenaliteParJour;
-  // On confronte les modèles sur le vent moyen ET sur la rafale, en
-  // retenant le pire désaccord des deux. La rafale est le critère qui
-  // élimine une heure (scoreHeure) : un accord sur la moyenne ne dit rien
-  // de l'accord sur la rafale, et c'est justement là que les modèles
-  // divergent le plus. Jusqu'à la v1.5.0 la rafale était téléchargée puis
-  // ignorée, ce qui pouvait afficher « confiance haute » sur un verdict
-  // décidé par une variable jamais comparée.
-  const ecarts = [];
-  for (const m of autres) {
-    if (m.vent != null && ventPrimaire != null) ecarts.push(Math.abs(ventPrimaire - m.vent));
-    if (m.rafales != null && rafalePrimaire != null) ecarts.push(Math.abs(rafalePrimaire - m.rafales));
-  }
-  if (ecarts.length === 0) return { niveau: "unique", ecart: null, nModeles: 1, penalite };
-  const ecart = Math.round(Math.max(...ecarts));
-  // Compter les MODÈLES qui ont contribué, pas les écarts : depuis que la
-  // rafale est comparée aussi, un même modèle peut produire deux écarts.
-  const nModeles = autres.filter(
-    (m) => (m.vent != null && ventPrimaire != null) || (m.rafales != null && rafalePrimaire != null)
-  ).length + 1;
-  const effectif = ecart + penalite;
-  const niveau =
-    effectif <= C.confianceHauteMax ? "haute" :
-    effectif <= C.confianceMoyenneMax ? "moyenne" : "faible";
-  return { niveau, ecart, nModeles, penalite };
 }

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chargerMeteo } from "./meteo.js";
+import { chargerMeteo, chargerMetar, dernierMetar } from "./meteo.js";
 
 // ------------------------------------------------------------
 // Fabriques de réponses Open-Meteo minimales pour les tests.
@@ -49,9 +49,37 @@ function reponsePrincipaleValide(dateHeader) {
   );
 }
 
-function reponseModeleSecondaire(vents) {
+function reponseModeles() {
   return jsonResponse({
-    hourly: { time: HEURES, wind_speed_10m: vents, wind_direction_10m: [240, 245, 250] },
+    hourly: {
+      time: HEURES,
+      wind_speed_10m_icon_d2: [11, 13, 29],
+      wind_gusts_10m_icon_d2: [14, 18, 40],
+      precipitation_icon_d2: [0, 0, 1.2],
+      cloud_cover_low_icon_d2: [0, 10, 90],
+      wind_speed_10m_ecmwf_ifs025: [9, 14, 31],
+      wind_gusts_10m_ecmwf_ifs025: [12, 20, 42],
+      precipitation_ecmwf_ifs025: [0, 0, 0],
+      cloud_cover_low_ecmwf_ifs025: [0, 0, 50],
+      // Modèle hors horizon : que des null -> absent du vote.
+      wind_speed_10m_gfs_seamless: [null, null, null],
+      wind_gusts_10m_gfs_seamless: [null, null, null],
+    },
+  });
+}
+
+function reponseEnsembles() {
+  return jsonResponse({
+    hourly: {
+      time: HEURES,
+      wind_speed_10m_ecmwf_ifs025_ensemble: [10, 10, 10],
+      wind_gusts_10m_ecmwf_ifs025_ensemble: [15, 15, 15],
+      wind_speed_10m_member01_ecmwf_ifs025_ensemble: [12, 12, 12],
+      wind_gusts_10m_member01_ecmwf_ifs025_ensemble: [18, 18, 50],
+      wind_speed_10m_member01_icon_seamless_eps: [8, 8, 8],
+      // Membre sans rafale : écarté (il ne peut pas juger le critère décisif).
+      wind_gusts_10m_member01_icon_seamless_eps: [null, null, null],
+    },
   });
 }
 
@@ -63,11 +91,11 @@ function installerFetch(impl) {
 
 // ------------------------------------------------------------
 
-test("chargerMeteo : cas nominal, 3 modèles disponibles -> comparaisons peuplées", async () => {
+test("chargerMeteo : cas nominal -> modèles et membres d'ensemble greffés heure par heure", async () => {
   const restaurer = installerFetch(async (url) => {
     const u = String(url);
-    if (u.includes("meteofrance_seamless")) return reponseModeleSecondaire([11, 13, 29]);
-    if (u.includes("ecmwf_ifs025")) return reponseModeleSecondaire([9, 14, 31]);
+    if (u.includes("ensemble-api")) return reponseEnsembles();
+    if (u.includes("models=")) return reponseModeles();
     return reponsePrincipaleValide("Sat, 22 Aug 2026 09:00:00 GMT");
   });
   try {
@@ -75,8 +103,11 @@ test("chargerMeteo : cas nominal, 3 modèles disponibles -> comparaisons peuplé
     assert.equal(r.jours.length, 1);
     assert.equal(r.jours[0].heures.length, 3);
     const h1 = r.jours[0].heures[1];
-    assert.equal(h1.comparaisons.arome.vent, 13);
-    assert.equal(h1.comparaisons.ecmwf.vent, 14);
+    assert.deepEqual(h1.modeles.icon_d2, { vent: 13, rafales: 18, precip: 0, nuagesBas: 10 });
+    assert.equal(h1.modeles.ecmwf_ifs025.rafales, 20);
+    assert.equal(h1.modeles.gfs_seamless, undefined, "modèle hors horizon absent");
+    assert.equal(h1.ensemble.length, 2, "contrôle + membre 01 ECMWF ; le membre ICON sans rafale est écarté");
+    assert.deepEqual(r.sources, { modeles: true, ensembles: true, metar: false });
     assert.equal(r.actuel.vent, 12);
     assert.equal(r.recupereLe, new Date("Sat, 22 Aug 2026 09:00:00 GMT").toISOString());
   } finally {
@@ -84,19 +115,38 @@ test("chargerMeteo : cas nominal, 3 modèles disponibles -> comparaisons peuplé
   }
 });
 
-test("chargerMeteo : modèles secondaires en échec -> l'app fonctionne quand même (comparaisons nulles)", async () => {
+test("chargerMeteo : modèles et ensembles en échec -> l'app fonctionne quand même", async () => {
   const restaurer = installerFetch(async (url) => {
     const u = String(url);
-    if (u.includes("meteofrance_seamless") || u.includes("ecmwf_ifs025")) {
-      throw new Error("réseau indisponible");
-    }
+    if (u.includes("ensemble-api") || u.includes("models=")) throw new Error("réseau indisponible");
     return reponsePrincipaleValide();
   });
   try {
     const r = await chargerMeteo();
     const h1 = r.jours[0].heures[1];
-    assert.equal(h1.comparaisons.arome, null);
-    assert.equal(h1.comparaisons.ecmwf, null);
+    assert.deepEqual(h1.modeles, {});
+    assert.deepEqual(h1.ensemble, []);
+    assert.deepEqual(r.sources, { modeles: false, ensembles: false, metar: false });
+  } finally {
+    restaurer();
+  }
+});
+
+test("dernierMetar : choisit l'observation la plus RÉCENTE, IEM triant du plus récent au plus ancien", () => {
+  const csv = [
+    "station,valid,metar",
+    "EBCI,2026-10-01 12:50,EBCI 011250Z 25006KT 9999 FEW035 21/11 Q1024 NOSIG",
+    "EBCI,2026-10-01 12:20,EBCI 011220Z 24008KT 9999 FEW028 21/13 Q1024 NOSIG",
+  ].join("\n");
+  assert.match(dernierMetar(csv), /011250Z/);
+  assert.match(dernierMetar(csv.split("\n").reverse().join("\n")), /011250Z/);
+  assert.equal(dernierMetar("station,valid,metar\n"), null);
+});
+
+test("chargerMetar : erreur réseau -> null, jamais d'exception", async () => {
+  const restaurer = installerFetch(async () => { throw new Error("hors ligne"); });
+  try {
+    assert.equal(await chargerMetar(), null);
   } finally {
     restaurer();
   }

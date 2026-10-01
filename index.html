@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Vent4000 — Ça saute à Namur ?</title>
-  <meta name="description" content="Météo parachutisme du Paraclub de Namur (EBNM) : verdict par jour d'ouverture, vents du sol à 4000 m, dérive estimée.">
+  <meta name="description" content="Météo parachutisme du Paraclub de Namur (EBNM) : probabilité de saut par heure, 7 modèles + 122 membres d'ensemble, plafond, vents du sol à 4000 m, observation de Charleroi.">
   <meta name="theme-color" content="#0B1016">
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./icons/icon-192.png">
@@ -26,23 +26,28 @@
         <span class="puce-label">Niveau</span>
         <strong id="niveau-actif">Tandem</strong>
       </button>
-      <a id="lien-gmaps" class="btn-icone" target="_blank" rel="noopener" title="Itinéraire Google Maps" aria-label="Itinéraire Google Maps">🗺️</a>
-      <button id="btn-reglages" class="btn-icone" title="Réglages" aria-label="Réglages">⚙️</button>
+      <a id="lien-gmaps" class="btn-icone" target="_blank" rel="noopener" title="Itinéraire Google Maps" aria-label="Itinéraire Google Maps">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
+      </a>
+      <button id="btn-reglages" class="btn-icone" title="Réglages" aria-label="Réglages">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.3 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.3-2.9a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
+      </button>
     </div>
   </header>
 
   <main>
-    <!-- Chargement -->
     <div id="chargement" class="chargement">
       <div class="manche-a-air" aria-hidden="true"></div>
       <p>Lecture du ciel au-dessus de Temploux…</p>
+      <p class="chargement-detail">7 modèles · 122 scénarios d'ensemble · observation de Charleroi</p>
     </div>
 
     <!-- ============ Vue Semaine ============ -->
     <section id="vue-semaine" hidden>
+      <div id="obs" class="obs" hidden></div>
 
-      <h2 class="etiquette">Jours d'ouverture — 7 prochains jours
-        <span class="hint">touche un jour pour le détail</span></h2>
+      <h2 class="etiquette">Jours d'ouverture
+        <span class="hint">% = probabilité de saut sur la meilleure fenêtre</span></h2>
       <div id="jours" class="jours"></div>
 
       <a id="lien-briefing" class="lien-bloc" target="_blank" rel="noopener">
@@ -60,50 +65,57 @@
       <div class="jour-entete">
         <h2 id="jour-titre"></h2>
         <p id="jour-soustitre" class="sous-titre"></p>
-        <p id="actuel" class="actuel" hidden></p>
       </div>
 
-      <article id="jour-verdict" class="hero hero-compact">
+      <article id="jour-verdict" class="hero">
         <div class="hero-haut">
-          <span class="hero-pastille" aria-hidden="true"></span>
-          <div>
+          <div class="hero-texte">
             <p id="jour-verdict-texte" class="hero-verdict"></p>
             <p id="jour-verdict-quand" class="hero-quand"></p>
           </div>
+          <div class="hero-jauge" id="jour-jauge"></div>
         </div>
+        <div id="jour-creneaux" class="creneaux"></div>
         <div id="jour-deplacement" class="deplacement" hidden></div>
         <p id="jour-experience" class="avert-experience" hidden></p>
-        <div id="jour-creneaux" class="creneaux"></div>
       </article>
 
-      <h3 class="etiquette">Heure par heure <span class="hint">vent / rafales au sol, km/h</span></h3>
-      <div id="timeline" class="timeline" role="tablist"></div>
+      <div id="jour-obs" class="obs" hidden></div>
 
-      <div class="bloc" id="detail-heure" role="tabpanel" tabindex="0">
-        <h3 class="etiquette">Cette heure-là</h3>
+      <h3 class="etiquette">Tableau horaire <span class="hint">touche une heure pour le détail</span></h3>
+      <div class="matrice-cadre">
+        <table id="matrice" class="matrice"></table>
+      </div>
+      <p class="legende">
+        <span class="lg lg-ok"></span>ok <span class="lg lg-limite"></span>limite
+        <span class="lg lg-bloquant"></span>bloquant · vents en km/h, distances en m (k = km)
+      </p>
+
+      <div class="bloc" id="detail-heure" tabindex="-1">
+        <h3 class="etiquette" id="detail-titre">Cette heure-là</h3>
         <ul id="raisons" class="raisons"></ul>
-        <p id="confiance" class="confiance"></p>
+        <div id="facteurs" class="facteurs"></div>
       </div>
 
-      <h3 class="etiquette">Profil du vent <span class="hint">sol → largage</span></h3>
-      <div id="profil" class="profil"></div>
+      <div class="bloc">
+        <h3 class="etiquette">Consensus des modèles</h3>
+        <div id="consensus"></div>
+      </div>
 
       <div class="bloc">
-        <h3 class="etiquette">Vent / piste</h3>
-        <div class="piste-bloc">
-          <svg id="boussole" viewBox="0 0 120 120" width="128" height="128" aria-label="Boussole : axe de piste, vent au sol et dérive"></svg>
-          <div id="crosswind" class="piste-infos"></div>
-        </div>
+        <h3 class="etiquette">Profil vertical <span class="hint">nuages · vent · température</span></h3>
+        <div id="profil" class="profil"></div>
       </div>
 
       <div class="bloc">
         <h3 class="etiquette">Spot — dérive estimée</h3>
+        <div class="piste-bloc">
+          <svg id="boussole" viewBox="0 0 120 120" width="128" height="128" aria-label="Boussole : axe de piste, vent au sol et dérive"></svg>
+          <div id="crosswind" class="piste-infos"></div>
+        </div>
         <div id="spot" class="stats"></div>
         <p class="note-hypotheses" id="spot-note"></p>
       </div>
-
-      <h3 class="etiquette">Détails</h3>
-      <div id="details" class="details"></div>
 
       <a id="lien-briefing-jour" class="lien-bloc" target="_blank" rel="noopener">
         <span class="lien-bloc-texte"><strong>Briefing officiel du club</strong></span>
@@ -123,9 +135,9 @@
         </label>
 
         <label class="champ">
-          <span>Vent max au sol <em>km/h</em></span>
+          <span>Vent max (rafales) <em>km/h</em></span>
           <input id="reglage-vent" type="number" min="5" max="46" step="1" inputmode="numeric">
-          <small class="champ-borne">Plafond légal belge : 46 km/h (25 kts)</small>
+          <small class="champ-borne">Plafond légal belge : 46 km/h (25 kts) de moyenne</small>
         </label>
 
         <label class="champ">
@@ -137,33 +149,55 @@
         <button id="reglage-reset" class="btn secondaire">Revenir aux seuils du niveau</button>
       </div>
 
+      <div class="bloc">
+        <h3 class="etiquette">Comment le verdict est calculé</h3>
+        <p class="legal-texte">
+          <strong>1. Facteurs.</strong> Chaque heure, l'app évalue séparément le vent au sol,
+          les rafales, le gradient de vent en finale, le vent à l'ouverture et au largage,
+          le plafond (couches nuageuses sur 9 niveaux du sol à 4200 m), la visibilité et le
+          brouillard, la pluie, l'orage (CAPE, CIN, potentiel d'éclairs), les thermiques,
+          le froid au largage et le givrage de l'avion.
+        </p>
+        <p class="legal-texte">
+          <strong>2. Probabilité.</strong> 7 modèles (dont 3 à 2 km de résolution :
+          ICON-D2, AROME HD, HARMONIE) et 122 scénarios d'ensemble (ICON-EPS, ECMWF-ENS,
+          GEFS) votent sur le vent, les rafales, la pluie et la couche basse. La part de
+          votes favorables est la probabilité de saut.
+        </p>
+        <p class="legal-texte">
+          <strong>3. Observation.</strong> Pour l'heure en cours, le METAR de Charleroi
+          (22 km) prime : un fait observé corrige la prévision.
+        </p>
+        <p class="legal-texte">
+          <strong>Vert</strong> : aucun facteur limite et probabilité ≥ 70 %.
+          <strong>Orange</strong> : un facteur limite ou probabilité 35-70 %.
+          <strong>Rouge</strong> : un facteur bloquant ou probabilité &lt; 35 %.
+          Un jour est sautable s'il offre au moins 2 h consécutives.
+        </p>
+      </div>
+
       <div class="bloc bloc-legal">
         <h3 class="etiquette">Cadre réglementaire</h3>
         <p class="legal-texte">
           <strong>1. Loi belge</strong> — circulaire <strong>CIR/GDF-05</strong> Éd. 4
           (03/06/2016), DGTA / SPF Mobilité, §6 : visibilité ≥ 3000 m,
           base de nuages ≥ 3000 ft AGL, vent ≤ 25 kts de <em>moyenne</em> au sol.
-          Ces limites sont appliquées en dur : aucun réglage ne peut les franchir.
+          Appliqué en dur : aucun réglage ne peut le franchir.
         </p>
         <p class="legal-texte">
-          <strong>2. Fédération</strong> — la circulaire renvoie aux fédérations
-          reconnues par les Communautés. Pour Namur : <strong>FWCP</strong>.
-          Son règlement technique n'ayant pas pu être consulté, les seuils par
-          brevet reprennent la <strong>FFP DT49</strong> (même nomenclature A/B/C/D)
-          — <em>à faire confirmer par tes moniteurs</em>.
+          <strong>2. Fédération</strong> — <strong>Règlement de Sécurité de Base FWCP</strong>
+          v2.1 (05/2026), §3.4.2 : 7 m/s (25 km/h) jusqu'au brevet B inclus, 25 kts au-delà ;
+          §3.5 : ouverture au-dessus de 3000 ft pour tous.
         </p>
         <p class="legal-texte">
-          <strong>3. Club</strong> — la circulaire précise que la détermination
-          des conditions « est de la responsabilité du responsable des sauts ».
+          <strong>3. Club</strong> — le responsable technique peut durcir ces limites
+          et décide seul de l'ouverture des sauts.
         </p>
       </div>
 
       <p class="avertissement">
-        ⚠ Le cadre légal belge est appliqué strictement. Les seuils
-        <strong>par brevet</strong> restent <strong>indicatifs</strong> tant que le
-        règlement FWCP n'est pas confirmé.
-        <strong>La décision de sauter appartient toujours au Paraclub et à tes
-        moniteurs.</strong>
+        ⚠ Outil d'aide à la décision, sans valeur officielle.
+        <strong>La décision de sauter appartient toujours au Paraclub et à tes moniteurs.</strong>
       </p>
     </section>
   </main>
@@ -174,7 +208,7 @@
       <a id="lien-windy" target="_blank" rel="noopener">Windy</a>
       <a id="lien-club" target="_blank" rel="noopener">Paraclub</a>
     </nav>
-    <p class="pied-note">Prévisions Open-Meteo · outil personnel, sans valeur officielle · <span id="version"></span></p>
+    <p class="pied-note">Open-Meteo · IEM (METAR) · outil personnel, sans valeur officielle · <span id="version"></span></p>
   </footer>
 
   <script type="module" src="./js/app.js"></script>
