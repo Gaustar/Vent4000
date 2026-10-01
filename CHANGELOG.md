@@ -4,6 +4,60 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [2.1.0] — 2026-10-01
+
+Demande : « aucune spéculation ; se baser sur les plus précises des données
+disponibles pour la zone, avec les règles du parachutisme selon
+l'expérience ». La v2.0 ne la satisfaisait pas : probabilité pondérée par
+des poids choisis, plafond estimé, seuils sans texte. Tout cela est retiré.
+
+### Règles — uniquement des textes, cités dans l'app
+- Relu au texte : CIR/GDF-05 §6 et RSB FWCP v2.1 §3.4.1, §3.4.2, §3.5,
+  §6.4.1 (archivés dans `docs/`). Chaque règle affiche sa référence.
+- **Tandem** : 28 km/h (valeur sans source) → 7 m/s, seule ligne du barème
+  qui couvre un sauteur sans brevet ; ouverture 5000 ft (RSB §6.4.1).
+- **Brevet A** : ouverture 1200 m (valeur FFP) → 3000 ft (RSB §3.5).
+- **Plafond** : la marge de 300 m au-dessus de l'ouverture (choix de
+  conception) est supprimée ; plancher légal 914 m pour tous. Une couche
+  sous l'altitude d'ouverture du tandem ou de l'AFF passe en orange.
+- Retirés du verdict (aucun texte) : écart rafale/moyenne, « proche du
+  seuil », hausse rapide, vent à l'ouverture et au largage, gradient, CAPE,
+  thermiques, froid, givrage, marge de visibilité 5 km.
+- Réglage personnel : seulement un vent max plus strict que le règlement ;
+  le champ plafond est supprimé.
+
+### Données — les plus précises pour EBNM
+- **TAF de Charleroi** (prévision officielle d'aérodrome) et METAR via MET
+  Norway (CORS ouvert), avec lecture complète des groupes BECMG, TEMPO,
+  PROB30/40 et FM, et conversion heure locale ↔ UTC (changement d'heure
+  compris).
+- **5 modèles de 1,3 à 2,2 km** (AROME HD, ICON-D2, HARMONIE KNMI et DMI,
+  UKMO 2 km). HARMONIE DMI et UKMO **calculent la base des nuages** : c'est
+  la seule source de plafond prévu hors TAF. Ailleurs, le plafond est soit
+  déduit par définition (couche basse < 5/8 → aucun plafond sous 2 km),
+  soit déclaré non vérifiable — jamais estimé.
+- Modèles régionaux 7-10 km (ICON-EU, ECMWF IFS, ARPEGE) seulement hors
+  portée des modèles 2 km, et signalés.
+- Supprimés : ensembles (0,25° et plus), probabilité pondérée, profil de
+  nuages dérivé de l'humidité, formule T/Td, estimation de dérive et de
+  séparation (taux de chute supposés).
+
+### Décision
+- Chaque source est confrontée à chaque règle ; l'app affiche le compte.
+  Plus de la moitié en échec → rouge ; une partie → orange ; aucune
+  donnée → orange « non vérifiable » ; tout respecté → vert.
+- L'observation tranche seule pour l'heure en cours.
+
+### Interface
+- Accueil : nombre de sources favorables à la place du pourcentage.
+- Vue Jour : bloc TAF, tableau horaire en plages min–max des sources,
+  règles avec référence, tableau des sources, vent en altitude en
+  information. Bloc spot supprimé.
+
+### Tests
+76 tests : règles, combinaison des sources, METAR/TAF (BECMG, TEMPO, PROB,
+FM, heure 24, fin de mois), heure locale ↔ UTC, invariants réglementaires.
+
 ## [2.0.0] — 2026-10-01
 
 Refonte complète du moteur de décision et de l'interface. Objectif : la

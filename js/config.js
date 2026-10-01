@@ -1,6 +1,15 @@
 // ============================================================
-// Vent4000 — Configuration centrale
+// Vent4000 — Configuration centrale (v2.1)
 // Paraclub de Namur — Aérodrome de Namur/Temploux-Suarlée (EBNM)
+//
+// PRINCIPE : aucune spéculation. Le verdict ne repose que sur
+//  1. des RÈGLES écrites (loi belge, règlement fédéral FWCP), citées ;
+//  2. les DONNÉES les plus précises disponibles pour la zone :
+//     observation réelle (METAR), prévision officielle d'aérodrome (TAF),
+//     modèles de 1,3 à 2,2 km de maille — puis, au-delà de leur portée,
+//     modèles régionaux de 7 à 10 km, signalés comme moins précis.
+// Aucun seuil inventé, aucune estimation (pas de plafond déduit d'une
+// formule, pas de pondération arbitraire, pas de dérive supposée).
 // ============================================================
 
 export const DZ = {
@@ -9,416 +18,158 @@ export const DZ = {
   lat: 50.4897,
   lon: 4.7697,
   altitudeTerrain: 181,   // m AMSL — à soustraire des géopotentiels pour obtenir l'AGL
-  qfu: 64,                // axe de piste 064° / 244°
-  altitudeLargage: 4000,  // m AGL (approx.)
+  qfu: 64,                // axe de piste 064° / 244° (Règlement d'aérodrome EBNM v004, §3.1)
 };
 
+const FT = 0.3048;
+const KT = 1.852;
+
 // ============================================================
-// ÉTAGE 1 — PLANCHER LÉGAL BELGE (non franchissable)
-//
-// Source : circulaire CIR/GDF-05, Édition 4 du 03/06/2016,
-// Direction générale Transport Aérien (SPF Mobilité et Transports).
-// Copie archivée : docs/CIR-GDF-05_ed4_20160603.pdf — §6 :
-//
-//   « Les sauts en parachute ne sont autorisés que dans les
-//     conditions météorologiques suivantes :
+// ÉTAGE 1 — LOI BELGE : circulaire CIR/GDF-05, Éd. 4 (03/06/2016),
+// DGTA / SPF Mobilité. Copie : docs/CIR-GDF-05_ed4_20160603.pdf, §6 :
+//   « L'aéronef vole tout le temps en VMC. […] Les sauts en parachute ne
+//     sont autorisés que dans les conditions météorologiques suivantes :
 //     a) Visibilité : minimum 3000 m ;
 //     b) Base de nuages : minimum 3000 ft AGL ;
 //     c) Vitesse du vent : maximum 25 kts de moyenne au sol. »
-//
-// C'est le droit belge applicable à EBNM, au-dessus de toute règle
-// fédérale ou de club. Aucun niveau de pratique, aucun réglage
-// personnalisé ne peut le franchir : les bornes des champs de réglage
-// en dépendent (cf. app.js / index.html) et scoring.js le teste
-// séparément des seuils de niveau, avec son propre motif.
-//
-// ⚠ Le point (c) porte explicitement sur la MOYENNE au sol. La règle
-// « la limite s'applique à la rafale » (pratique DZ, cf. README) est
-// un durcissement de niveau, pas la règle légale : les deux tests sont
-// donc distincts dans scoring.js et ne doivent pas être fusionnés.
-//
-// La même circulaire délègue le reste aux fédérations : « Pour ce qui
-// est des aspects techniques non couverts par la présente circulaire,
-// les intéressés se réfèreront aux directives émises par les
-// fédérations de parachutistes reconnues par les Communautés. » Pour
-// Namur (Wallonie) : FWCP — cf. NIVEAUX_PRATIQUE ci-dessous.
+// ============================================================
 export const LEGAL_BE = {
-  ventMoyenMaxSol: 46,  // km/h — 25 kts = 46,30 (arrondi à l'entier inférieur)
-  plafondMinAGL: 914,   // m AGL — 3000 ft = 914,4 (arrondi à l'entier inférieur)
-  visibiliteMin: 3000,  // m
-  source: "CIR/GDF-05 Éd.4 (03/06/2016) §6 — DGTA",
+  ventMoyenMaxSol: Math.floor(25 * KT),   // 46 km/h
+  plafondMinAGL: Math.floor(3000 * FT),   // 914 m
+  visibiliteMin: 3000,                    // m
+  source: "CIR/GDF-05 §6",
 };
 
-// Niveaux de pression Open-Meteo. Jusqu'à la v1.8 l'app n'en lisait que
-// quatre (925/850/700/600) et le vent seulement : le plafond était déduit
-// d'un unique écart température/point de rosée. On lit maintenant neuf
-// niveaux, avec pour chacun le vent, la température, l'humidité et la
-// COUVERTURE NUAGEUSE — ce qui donne un vrai profil vertical des couches
-// (base, épaisseur, givrage) entre le sol et l'altitude de largage.
-// Altitudes AGL indicatives (atmosphère standard, terrain à 181 m) : la
-// valeur réelle est recalculée à chaque heure depuis le géopotentiel.
-export const NIVEAUX_PRESSION = [
-  { hpa: 1000, role: "Surface" },
-  { hpa: 975,  role: "~150 m" },
-  { hpa: 950,  role: "~380 m" },
-  { hpa: 925,  role: "Basse couche" },
-  { hpa: 900,  role: "~800 m" },
-  { hpa: 850,  role: "Ouverture" },
-  { hpa: 800,  role: "~1800 m" },
-  { hpa: 700,  role: "Chute" },
-  { hpa: 600,  role: "Largage" },
-];
-
 // ============================================================
-// ÉTAGE 2 — RÈGLEMENT FÉDÉRAL FWCP (contraignant pour le club)
+// ÉTAGE 2 — FÉDÉRATION : Règlement de Sécurité de Base FWCP v2.1
+// (juin 2026). Copie : docs/FWCP_RSB_v2.1_20260518.pdf.
 //
-// Source : **Règlement de Sécurité de Base (RSB) de la FWCP**,
-// Fédération Wallonne des Clubs de Parachutisme — version 2.1, juin 2026
-// (mise à jour 18/05/2026). Copie archivée :
-// docs/FWCP_RSB_v2.1_20260518.pdf — original : fwcp.be/Files/FWCP_Secu.pdf
+// §3.4.1 « la couverture nuageuse ne doit pas être inférieure à
+//   3.000 ft AGL […] et la visibilité dans la zone ne doit pas être
+//   inférieure à 3 km. »
+// §3.4.2 « Vitesse de vent maximum au sol permise :
+//   • Jusqu'au brevet B inclus : maximum 7 m/sec ;
+//   • A partir du brevet B : maximum 12,86 m/sec (25 nœuds) (GDF 05) »
+//   Le « à partir du brevet B » chevauche la ligne précédente ; le Basis
+//   Veiligheidsreglement de la VVP (homologue flamand, harmonisé au sein
+//   de la FBP) écrit « Tot en met B-brevet : 14 knopen / Vanaf C-brevet :
+//   25 knopen » : le palier haut commence au brevet C.
+//   « Le Responsable Technique […] peut imposer des limites plus sévères. »
+// §3.5 « Tout parachutiste doit avoir actionné l'ouverture de son
+//   parachute au-dessus de 3000 ft AGL. »
+// §6.4.1 Tandem : « L'altitude minimum pour effectuer un saut tandem est
+//   de 6.500 ft AGL. L'altitude minimum d'ouverture est de 5.000 ft AGL. »
+// RSB, définition : « élève = non titulaire du brevet A ».
 //
-// Le Paraclub de Namur est affilié FWCP, et le RSB §3.1 est explicite :
-//   « Le règlement de base de sécurité de la FWCP présente, pour les clubs
-//     qui y sont affiliés, une OBLIGATION et les déviations par rapport à
-//     celui-ci ne sont admises que sur dérogation écrite du Directeur
-//     Technique et du Président de la FWCP. »
-// Il ajoute : « chaque centre peut éditer chez lui des règles plus
-// restrictives » et, §3.4.2, « Le Responsable Technique durant les
-// opérations peut imposer des limites plus sévères ». D'où l'étage 3
-// (club/RT) qui se superpose, jamais qui assouplit.
+// Vent : le RSB dit « vitesse de vent », sans préciser moyenne ou rafale.
+// L'app applique la limite à la moyenne ET à la rafale (une rafale au-delà
+// de la limite est une vitesse de vent au-delà de la limite) ; la loi
+// (GDF-05) porte, elle, explicitement sur la moyenne.
 //
-// ⚠ Ces valeurs REMPLACENT celles de la FFP française utilisées jusqu'en
-// v1.5.0 en substitution. Le RSB était introuvable via les moteurs de
-// recherche ; il est publié sur fwcp.be → Hub de Formation → Sécurité.
-//
-// § 3.4.2 Vent — citation exacte :
-//   « Vitesse de vent maximum au sol permise :
-//     • Jusqu'au brevet B inclus : maximum 7 m/sec ;
-//     • A partir du brevet B : maximum 12,86 m/sec. (25 nœuds) (GDF 05)
-//     • Exception : sauts de nuit : maximum 7 m/sec. »
-//   → 7 m/s = 25,2 km/h ; 12,86 m/s = 46,3 km/h (= la limite GDF-05).
-//
-// ⚠ AMBIGUÏTÉ DANS LA SOURCE FWCP — levée par la fédération flamande.
-// Le brevet B apparaît des DEUX côtés du barème du RSB (« jusqu'au brevet
-// B inclus » ET « à partir du brevet B »), ce qui laissait le choix entre
-// 25 et 46 km/h. Le **Basis Veiligheidsreglement de la VVP** (Vlaams
-// Verbond van Paraclubs — l'homologue flamand, harmonisé avec la FWCP au
-// sein de la FBP, cf. RSB §2.2) tranche, section « Wind » :
-//   « Snelheidsbeperkingen voor grondwind :
-//     • Tot en met B-brevet : maximum 14 knopen
-//     • Vanaf C-brevet : maximum 25 knopen
-//     • Uitzondering nachtsprongen : maximum 14 knopen »
-// Soit : jusqu'au brevet B inclus → 14 kts ; à partir du brevet **C** →
-// 25 kts. Et 14 kts = 25,9 km/h ≈ les 7 m/s (25,2 km/h) de la FWCP : même
-// valeur, autre unité. Le « à partir du brevet B » du RSB est donc très
-// probablement une coquille pour « brevet C ».
-// → Le brevet B reste à 25 km/h, et ce n'est plus une prudence mais une
-// lecture corroborée. Reste à confirmer par le RT, qui peut de toute façon
-// durcir (§3.4.2).
-//
-// ⚠ Ce qu'AUCUN des deux règlements ne dit : si la limite porte sur la
-// MOYENNE ou sur la RAFALE. Seul GDF-05 précise « de moyenne ». L'app
-// applique le seuil de niveau à la rafale (durcissement DZ documenté, cf.
-// README) et la limite légale à la moyenne — question ouverte pour le RT.
-//
-// § 3.5 Altitudes de sécurité — citation exacte :
-//   « Tout parachutiste doit avoir actionné l'ouverture de son parachute
-//     au-dessus de 3000 ft AGL. »
-//   → 914 m AGL, pour TOUS, sans distinction de brevet. C'est pourquoi
-//   hauteurOuverture ne descend plus à 850 m (valeur FFP française) : elle
-//   était SOUS le minimum belge pour les brevets B et C/D.
-//
-// § 3.4.1 confirme par ailleurs les valeurs de LEGAL_BE : « la couverture
-// nuageuse ne doit pas être inférieure à 3.000 ft AGL […] et la visibilité
-// dans la zone ne doit pas être inférieure à 3 km ».
-//
-// Le TANDEM n'est pas couvert par le barème §3.4.2 (qui parle de brevets
-// de progression solo ; en tandem le moniteur est aux commandes et détient
-// au minimum un brevet D + qualification tandem). Son seuil reste un
-// jugement club/matériel. ⚠ Noter qu'à 28 km/h il dépasse les 25 km/h
-// applicables à un solo jusqu'au brevet B — cohérent avec la pratique
-// tandem, mais à confirmer.
-//
-// ecartRafalesOrange : écart rafale/moyenne (km/h) qui dégrade le verdict.
-// Aucun chiffre FWCP ni GDF-05 là-dessus — reste calé sur la pratique DZ
-// documentée (Skydivemag, « Winds Limits Part 1 ») : un jumper expérimenté
-// tolère un spread plus large qu'un élève.
-//
-// Plafond nuageux minimum par niveau : aucune source chiffrée (ni GDF-05,
-// ni FWCP, ni club) — DÉRIVÉ, jamais posé à la main, du maximum entre :
-//   1. le plancher légal/fédéral : 914 m (3000 ft) ;
-//   2. la hauteur d'ouverture + MARGE_PLAFOND_OUVERTURE, pour pouvoir
-//      ouvrir en air clair avec une référence visuelle sur la zone de poser.
-// MARGE_PLAFOND_OUVERTURE est LE seul paramètre de jugement DZ restant
-// dans ce fichier : c'est lui qu'il faut faire confirmer ou durcir.
-export const MARGE_PLAFOND_OUVERTURE = 300; // m au-dessus de l'ouverture
+// Tandem : le passager n'est titulaire d'aucun brevet. Le barème §3.4.2
+// est donné par brevet ; la seule ligne qui couvre un sauteur sans brevet
+// est « jusqu'au brevet B inclus » (7 m/s). C'est ce palier qui est
+// appliqué — le RT peut en décider autrement, jamais l'app.
+// ============================================================
+const VENT_JUSQU_BREVET_B = Math.floor(7 * 3.6);   // 25 km/h (7 m/s = 25,2)
+const VENT_A_PARTIR_BREVET_C = LEGAL_BE.ventMoyenMaxSol; // 46 km/h (25 kts)
+const OUVERTURE_MIN = Math.floor(3000 * FT);       // 914 m — RSB §3.5
 
-/** Plafond minimum d'un niveau : le plus contraignant des deux étages. */
-function plafondMinPour(hauteurOuverture) {
-  return Math.max(LEGAL_BE.plafondMinAGL, hauteurOuverture + MARGE_PLAFOND_OUVERTURE);
-}
-
-// Repères de spread rafale/moyenne (Skydivemag, aucune source fédérale) :
-//   élève/tandem ≈ 5 kt (9 km/h) · brevet A/B ≈ 7 kt (13 km/h) ·
-//   brevet C/D ≈ 10 kt (18 km/h).
-// hauteurOuverture : au-dessus du minimum RSB §3.5 (914 m) pour tous ;
-// 1500 m pour élève et tandem, confirmé par le club lui-même — « Vous
-// ouvrez votre parachute à environ 1500 mètres » (paraclubnamur.be, page
-// formation AFF). L'altitude de largage à 4000 m l'est aussi : « Vous
-// pouvez sauter seul, en chute libre, à 4000 mètres » (FAQ du club).
-//
-// La décision finale appartient toujours au club et aux moniteurs.
-//
-// Barème FWCP §3.4.2 : DEUX paliers, pas cinq. Les valeurs intermédiaires
-// de la v1.4.x (brevet A à 33, brevet B à 39) venaient de la FFP française
-// et n'ont aucune existence dans le règlement belge — elles autorisaient
-// un brevet A à sauter 8 km/h au-dessus de sa limite FWCP réelle.
-const FWCP_VENT_JUSQU_BREVET_B = 25; // 7 m/s = 25,2 → arrondi ↓
-const FWCP_VENT_APRES_BREVET_B = 46; // 12,86 m/s = 25 kts = 46,3 → arrondi ↓
-const FWCP_OUVERTURE_MIN = 914;      // 3000 ft AGL, §3.5, pour tous
-
-// `ventMax` est testé contre la RAFALE (durcissement de niveau, pratique
-// DZ) ; le test légal GDF-05 sur la MOYENNE s'applique en plus, quel que
-// soit le niveau. Aucun `ventMax` ne peut dépasser le plafond légal, ni
-// aucune `hauteurOuverture` passer sous 914 m — invariants testés.
 export const NIVEAUX_PRATIQUE = {
-  tandem:  { label: "Tandem",     ventMax: 28,                          ecartRafalesOrange: 9,  hauteurOuverture: 1500 },
-  aff:     { label: "Élève AFF",  ventMax: FWCP_VENT_JUSQU_BREVET_B,    ecartRafalesOrange: 9,  hauteurOuverture: 1500, eleve: true },
-  brevetA: { label: "Brevet A",   ventMax: FWCP_VENT_JUSQU_BREVET_B,    ecartRafalesOrange: 13, hauteurOuverture: 1200 },
-  brevetB: { label: "Brevet B",   ventMax: FWCP_VENT_JUSQU_BREVET_B,    ecartRafalesOrange: 13, hauteurOuverture: FWCP_OUVERTURE_MIN },
-  brevetCD:{ label: "Brevet C/D", ventMax: FWCP_VENT_APRES_BREVET_B,    ecartRafalesOrange: 18, hauteurOuverture: FWCP_OUVERTURE_MIN },
+  tandem:   { label: "Tandem (passager)", ventMax: VENT_JUSQU_BREVET_B,    hauteurOuverture: Math.floor(5000 * FT), sourceOuverture: "RSB §6.4.1 (5000 ft)" },
+  aff:      { label: "Élève AFF",         ventMax: VENT_JUSQU_BREVET_B,    hauteurOuverture: 1500, sourceOuverture: "paraclubnamur.be — formation AFF : « vous ouvrez votre parachute à environ 1500 mètres »" },
+  brevetA:  { label: "Brevet A",          ventMax: VENT_JUSQU_BREVET_B,    hauteurOuverture: OUVERTURE_MIN, sourceOuverture: "RSB §3.5 (3000 ft)" },
+  brevetB:  { label: "Brevet B",          ventMax: VENT_JUSQU_BREVET_B,    hauteurOuverture: OUVERTURE_MIN, sourceOuverture: "RSB §3.5 (3000 ft)" },
+  brevetCD: { label: "Brevet C/D",        ventMax: VENT_A_PARTIR_BREVET_C, hauteurOuverture: OUVERTURE_MIN, sourceOuverture: "RSB §3.5 (3000 ft)" },
 };
+// Plafond minimum : le plancher légal, identique pour tous (GDF-05 §6 b,
+// RSB §3.4.1). Aucune marge ajoutée.
+for (const n of Object.values(NIVEAUX_PRATIQUE)) n.plafondMin = LEGAL_BE.plafondMinAGL;
 
-// Plafond dérivé (cf. plafondMinPour) injecté après coup, pour que la
-// filiation reste lisible dans le littéral ci-dessus.
-for (const n of Object.values(NIVEAUX_PRATIQUE)) {
-  n.plafondMin = plafondMinPour(n.hauteurOuverture);
-}
-
-// Hypothèses de vol pour l'estimation de dérive / spot (js/spot.js).
-// ⚠ Valeurs moyennes typiques, pas des mesures : l'estimation sert à
-// anticiper l'ordre de grandeur de la dérive, pas à remplacer le largueur.
-export const VOL = {
-  tauxChuteVoile: 5,     // m/s — taux de chute moyen sous voile ram-air
-  vitesseChuteLibre: 55, // m/s (~200 km/h) — chute ventre stabilisée
-  // Vitesse propre de l'avion en axe de largage (≈ 80 kt, valeur typique
-  // Cessna 208 / Pilatus PC-6). Sert à estimer la vitesse sol en axe face
-  // au vent, donc le temps à laisser entre deux groupes.
-  vitesseAvionLargage: 150, // km/h
-  // Distance horizontale minimale visée entre deux groupes à l'ouverture
-  // (règle de pratique répandue : ~300 m / 1000 ft).
-  separationGroupes: 300,   // m
-};
-
-// Niveaux "au-dessus du sol" (AGL direct, pas de conversion nécessaire) —
-// comblent l'écart entre le sol et le premier niveau de pression (925 hPa ≈ 800 m).
-// Zone la plus critique pour l'ouverture et l'atterrissage sous voile.
-export const NIVEAUX_AGL = [180, 120, 80];
-
-// Seuils communs (identiques quel que soit le niveau)
-export const SEUILS_COMMUNS = {
-  precipMax: 0.2,        // mm/h — au-delà : rouge
-  probaPluieMax: 60,     // % — au-delà : rouge
-  capeOrange: 400,       // J/kg — instabilité notable
-  capeRouge: 800,        // J/kg — risque orageux
-  // Visibilité : le minimum LÉGAL est 3000 m (LEGAL_BE.visibiliteMin) et
-  // déclenche un rouge « hors limite légale ». Entre 3000 et 5000 m le
-  // saut est légal mais la marge est mince : marge de confort DZ, donc
-  // orange et non rouge. Avant la v1.5.0 le seuil unique de 5000 m
-  // sortait rouge sur des conditions pourtant légalement sautables.
-  visibiliteConfort: 5000, // m — en dessous : orange (marge club)
-  ventOrangeRatio: 0.8,  // vent > 80 % du seuil → orange
-  nuagesOrangeMin: 30,   // % couverture basse+moyenne combinée → orange
-  // Une couche compacte (≥ 85 % sur UN étage) bouche le ciel : l'avion ne
-  // peut pas larguer en VFR à travers. Testé par étage et non sur la somme
-  // des couches : 45 % bas + 40 % moyen, c'est un ciel morcelé (orange),
-  // pas un ciel bouché. La couche « moyenne » d'Open-Meteo (~3-8 km)
-  // contient l'altitude de largage (4000 m) → message dédié.
-  // ⚠ Avant la v1.4.0, un ciel 100 % couvert passait à travers la bande
-  // orange (30-75 %) et ressortait VERT, sans aucune raison affichée.
-  nuagesBoucheRouge: 85,
-  confianceHauteMax: 5,  // km/h d'écart entre modèles → confiance haute
-  confianceMoyenneMax: 12, // km/h d'écart → confiance moyenne ; au-delà = faible
-  // Pénalité d'échéance : la qualité d'une prévision se dégrade avec le
-  // délai. On ajoute ces km/h fictifs à l'écart entre modèles par jour
-  // au-delà de J+1, ce qui fait naturellement chuter la confiance au loin
-  // (et, via scoreHeure, plafonne les verdicts lointains à orange).
-  confiancePenaliteParJour: 2,
-  tendanceHausseOrange: 8, // km/h de hausse d'une heure à l'autre → orange
-  // Vent à la hauteur d'ouverture au-delà duquel une voile ne pénètre
-  // plus franchement face au vent : le parachutiste recule ou stagne au
-  // lieu de revenir vers la zone de poser. Une voile école avance de
-  // l'ordre de 35-45 km/h bras hauts, d'où ce seuil.
-  // ⚠ Aucune source FWCP ni GDF-05 ne chiffre ce point — c'est une règle
-  // de bon sens aérologique, volontairement DÉGRADANTE (orange) et non
-  // éliminatoire. À faire confirmer/ajuster par le Responsable Technique,
-  // au même titre que MARGE_PLAFOND_OUVERTURE.
-  // Elle existe parce que jusqu'à la v1.5.0 toute la colonne de vent
-  // (80-180 m AGL + 925/850/700/600 hPa) était récupérée, affichée et
-  // intégrée au calcul de dérive… sans jamais peser sur le verdict : une
-  // journée calme au sol avec 90 km/h à 4000 m ressortait VERTE.
-  ventOuvertureOrange: 40, // km/h à la hauteur d'ouverture
-  // Écart entre le relevé « maintenant » et la prévision de la même heure
-  // au-delà duquel on prévient que la prévision est en train de dériver.
-  ecartNowcastOrange: 10,  // km/h
-  // Écart de vent (km/h) au-delà duquel on parle d'évolution de la
-  // prévision entre deux consultations (js/tendance.js).
-  tendancePrevisionVent: 4,
-
-  // ---- Nouveaux paramètres (v2.0) ---------------------------------
-  // Couverture (%) à partir de laquelle un niveau de pression est
-  // considéré comme une COUCHE (≈ BKN, 5/8 = 62,5 %). C'est la base de la
-  // première couche qui fixe le plafond.
-  coucheMin: 60,
-  // Marge sous la base d'une couche : l'avion largue en air clair.
-  margeSousCouche: 150,     // m
-  // Si la couche oblige à larguer plus bas que ça, la journée est
-  // dégradée (chute très courte, tandem/AFF compromis).
-  largageReduitOrange: 3000, // m AGL
-  // Cisaillement bas : différence VECTORIELLE de vent entre 10 m et la
-  // basse couche (80-180 m), là où la voile finit son approche. Un
-  // gradient marqué fait « tomber » la voile en finale.
-  cisaillementOrange: 25,   // km/h
-  // Vent à l'altitude de largage : au-delà, le spot devient critique et la
-  // séparation entre groupes s'allonge fortement.
-  ventLargageOrange: 90,    // km/h
-  // Potentiel d'éclairs ICON (LPI, J/kg) : > 0 = activité électrique
-  // possible dans la maille, ≥ 1 = probable.
-  eclairsOrange: 0.01,
-  eclairsRouge: 1,
-  // Inhibition convective qui « verrouille » une CAPE élevée : au-delà, la
-  // convection a peu de chances de se déclencher → orange plutôt que rouge.
-  cinVerrou: 100,           // J/kg
-  liOrange: -3,             // indice de soulèvement (instabilité marquée)
-  // Froid à l'altitude de largage (température de l'air, hors refroidissement
-  // éolien de la chute) : info puis dégradant.
-  froidInfo: -5,            // °C
-  froidOrange: -15,         // °C
-  // Givrage avion : traversée d'une couche nuageuse entre 0 et -15 °C.
-  givrageTmax: 0,
-  givrageTmin: -15,
-  // Turbulence thermique sous voile : couche limite épaisse + instabilité.
-  thermiqueBLH: 1500,       // m
-  thermiqueCAPE: 150,       // J/kg
-};
+// Couverture à partir de laquelle une couche fait plafond : 5/8 (BKN),
+// définition OACI du plafond, la même que celle des METAR et des TAF.
+export const COUCHE_PLAFOND = 62.5; // %
 
 // ============================================================
-// PROBABILITÉ DE SAUT — vote pondéré multi-modèles + ensembles (v2.0)
+// SOURCES — classées par précision pour EBNM
 //
-// Une prévision unique ne dit pas si elle est sûre. On fait donc voter,
-// pour chaque heure, des modèles indépendants : chacun dit « sautable »
-// ou non sur les critères qu'il fournit (vent moyen ≤ légal, rafale ≤
-// seuil du niveau, pluie ≤ 0,2 mm/h, couche basse < 85 %). La proportion
-// pondérée de « oui » est la probabilité de saut affichée.
-//
-//  - Modèles haute résolution (2-2,5 km, ~48-72 h) : les plus fiables à
-//    courte échéance, sur le relief et le vent de surface.
-//  - Modèles globaux/régionaux : couvrent les 7 jours.
-//  - Ensembles (122 membres ICON-EPS + ECMWF-ENS + GEFS) : mesurent
-//    l'incertitude. Leur poids AUGMENTE avec l'échéance, parce qu'au-delà
-//    de J+2 c'est la dispersion qui compte plus qu'un run déterministe.
+// Vérifié le 2026-10-01 sur l'API Open-Meteo, point de grille le plus
+// proche de la piste et portée réelle de chaque modèle :
+//  - AROME France HD (Météo-France, 1,3 km) .......... ~42 h
+//  - ICON-D2 (DWD, 2,2 km) ........................... ~48 h
+//  - HARMONIE-AROME Pays-Bas (KNMI, 2 km) ............ ~60 h
+//  - HARMONIE-AROME Europe (DMI, 2 km) — base des nuages ~60 h
+//  - UKMO UK 2 km (Met Office) — base des nuages ..... ~54 h
+// Au-delà (« régional », moins précis) :
+//  - ICON-EU (DWD, 7 km) ~5 j · ECMWF IFS (9 km) 7 j · ARPEGE Europe (10 km) ~4,5 j
+// `base` : le modèle fournit la hauteur de la base des nuages.
 // ============================================================
 export const MODELES = [
-  { id: "icon_d2",                     nom: "ICON-D2",       poids: 3, hr: true },
-  { id: "meteofrance_arome_france_hd", nom: "AROME HD",      poids: 3, hr: true },
-  { id: "knmi_harmonie_arome_europe",  nom: "HARMONIE KNMI", poids: 3, hr: true },
-  { id: "ecmwf_ifs025",                nom: "ECMWF IFS",     poids: 2 },
-  { id: "icon_eu",                     nom: "ICON-EU",       poids: 2 },
-  { id: "ukmo_seamless",               nom: "UKMO",          poids: 2 },
-  { id: "gfs_seamless",                nom: "GFS",           poids: 2 },
+  { id: "meteofrance_arome_france_hd",  nom: "AROME HD",       maille: "1,3 km", hr: true },
+  { id: "icon_d2",                      nom: "ICON-D2",        maille: "2,2 km", hr: true },
+  { id: "knmi_harmonie_arome_netherlands", nom: "HARMONIE KNMI", maille: "2 km", hr: true },
+  { id: "dmi_harmonie_arome_europe",    nom: "HARMONIE DMI",   maille: "2 km",   hr: true, base: true },
+  { id: "ukmo_uk_deterministic_2km",    nom: "UKMO 2 km",      maille: "2 km",   hr: true, base: true },
+  { id: "icon_eu",                      nom: "ICON-EU",        maille: "7 km" },
+  { id: "ecmwf_ifs",                    nom: "ECMWF IFS",      maille: "9 km" },
+  { id: "meteofrance_arpege_europe",    nom: "ARPEGE",         maille: "10 km" },
 ];
-export const ENSEMBLES = [
-  { id: "icon_seamless", suffixe: "icon_seamless_eps",       nom: "ICON-EPS" },
-  { id: "ecmwf_ifs025",  suffixe: "ecmwf_ifs025_ensemble",   nom: "ECMWF-ENS" },
-  { id: "gfs025",        suffixe: "ncep_gefs025",            nom: "GEFS" },
-];
-export const PROBA = {
-  // Poids TOTAL des ensembles (réparti entre leurs membres), selon l'échéance.
-  poidsEnsembleBase: 6,
-  poidsEnsembleParJour: 2,  // au-delà de J+1
-  poidsEnsembleMax: 14,
-  vert: 0.7,    // ≥ 70 % → peut être vert
-  rouge: 0.35,  // < 35 % → rouge
-  nuagesBasBouche: 85, // % — critère « couche basse compacte » d'un membre
-};
 
-// Observation réelle la plus proche : METAR de Charleroi (EBCI, 22 km à
-// l'ouest, même plateau, 186 m). EBNM n'émet pas de METAR. Source : Iowa
-// Environmental Mesonet (archive mondiale des METAR, CORS ouvert, sans clé).
-export const METAR = {
+// Observation et prévision officielle d'aérodrome. EBNM n'émet ni METAR
+// ni TAF ; Charleroi (EBCI) est à 22 km à l'ouest, sur le même plateau
+// (176 m). Source : MET Norway (api.met.no/tafmetar), CORS ouvert.
+export const AERODROME = {
   station: "EBCI",
   nom: "Charleroi",
   distanceKm: 22,
-  ageMaxMin: 90, // au-delà, l'observation est trop vieille pour corriger l'heure en cours
+  metarAgeMaxMin: 90, // au-delà, l'observation ne décrit plus l'heure en cours
 };
 
 // ============================================================
-// ÉTAGE 3 — CRÉNEAUX DU CLUB (Paraclub de Namur)
-//
-// Vérifié le 2026-09-23 sur paraclubnamur.be. Citations :
-//
-//  - FAQ « heures d'ouverture » : « le PCN est ouvert les week-ends et
-//    jours fériés dès 8h30 et jusqu'au coucher du soleil de Mars à
-//    mi-décembre. Il est également ouvert les vendredis dès 16h00 **de mai
-//    à septembre**. » → confirme saison, vendredis et horaires encodés.
-//
-//  - Page formation AFF, « Organisation des créneaux » : « En pleine
-//    saison, les journées sont divisées en deux créneaux : de 8h30 à
-//    14h00, puis de 14h00 jusqu'au coucher du soleil. Le vendredi, il n'y
-//    a qu'un créneau de 16h00 au coucher du soleil. **À partir de fin
-//    octobre (avec le changement d'heure), les journées sont continues, de
-//    8h30 jusqu'au coucher du soleil.** »
-//    → le découpage matin/après-midi DISPARAÎT en fin de saison. L'app le
-//    ignorait et continuait à couper à 14h, ce qui fractionne une journée
-//    continue en deux et peut faire manquer une fenêtre à cheval sur 14h
-//    (la règle des 2 h consécutives s'applique par créneau).
-//
-//  - FAQ « organisation de la journée » : « De manière générale, les
-//    séances de saut au PCN **débutent à 9h00** et se terminent au coucher
-//    du soleil. » → 8h30 est l'heure d'ouverture/inscription, 9h00 celle
-//    du premier saut. Scorer dès 8h proposait une fenêtre pendant laquelle
-//    personne ne saute.
+// ÉTAGE 3 — CRÉNEAUX DU CLUB (Paraclub de Namur), vérifiés le 2026-09-23
+// sur paraclubnamur.be :
+//  - « ouvert les week-ends et jours fériés dès 8h30 et jusqu'au coucher
+//    du soleil de Mars à mi-décembre. […] les vendredis dès 16h00 de mai
+//    à septembre. »
+//  - « En pleine saison, les journées sont divisées en deux créneaux : de
+//    8h30 à 14h00, puis de 14h00 jusqu'au coucher du soleil. […] À partir
+//    de fin octobre (avec le changement d'heure), les journées sont
+//    continues. »
+//  - « les séances de saut au PCN débutent à 9h00 ».
+// ============================================================
 export const OUVERTURE = {
-  saisonDebut: { mois: 3, jour: 1 },    // 1er mars
-  saisonFin:   { mois: 12, jour: 15 },  // mi-décembre
-  vendrediDebutMois: 5,                 // vendredis de mai…
-  vendrediFinMois: 9,                   // …à septembre
-  heureOuverture: 8.5,                  // 8h30 — ouverture du club
-  heurePremierSaut: 9,                  // 9h00 — début réel des séances
-  heureSplit: 14,                       // matin / après-midi (pleine saison)
-  heureVendredi: 16,                    // vendredi dès 16h
+  saisonDebut: { mois: 3, jour: 1 },
+  saisonFin:   { mois: 12, jour: 15 },
+  vendrediDebutMois: 5,
+  vendrediFinMois: 9,
+  heureOuverture: 8.5,
+  heurePremierSaut: 9,
+  heureSplit: 14,
+  heureVendredi: 16,
+};
+
+// Affichage uniquement (sans effet sur le verdict) : écart de vent moyen
+// à partir duquel on signale que la prévision a bougé depuis la dernière
+// consultation (js/tendance.js).
+export const SEUILS_COMMUNS = {
+  tendancePrevisionVent: 4, // km/h
 };
 
 // ============================================================
-// TRAJET — l'enjeu réel de chaque décision
-//
-// L'app ne répond pas à « ça saute ? » mais à « est-ce que ça vaut le
-// déplacement ? ». Ces deux questions divergent dès qu'on habite loin :
-// une journée orange se tente quand on est à 15 min, pas à 1h30.
-//
-// Distance et durée relevées sur Google Maps (Bouillon → Paraclub Namur,
-// Suarlée), itinéraire sans péage.
-//
-// `prixCarburantDefaut` n'est qu'un REPLI : le prix réel est récupéré
-// chaque jour auprès de Statbel / SPF Économie (cf. js/carburant.js). Le
-// diesel belge ayant pris plus de 40 % en un an, une valeur figée dans le
-// code devient fausse en quelques semaines et fausse tout l'arbitrage.
+// TRAJET — Bouillon → Paraclub Namur (Google Maps, sans péage).
+// Le prix du litre est récupéré chaque jour (Statbel, js/carburant.js) ;
+// la valeur ci-dessous n'est qu'un repli.
+// ============================================================
 export const TRAJET = {
   distanceAllerKm: 113,
   dureeAllerMin: 90,
-  consoL100: 6,              // L/100 km — hypothèse véhicule, à ajuster
-  prixCarburantDefaut: 2.50, // €/L — diesel B7 TTC au 23/09/2026 (repli)
+  consoL100: 6,
+  prixCarburantDefaut: 2.50,
 };
 
-/**
- * Coût et temps d'un aller-retour raté.
- * @param {number|null} prixLitre — prix officiel du jour ; null → repli config
- */
 export function coutAllerRetour(prixLitre = null) {
   const km = TRAJET.distanceAllerKm * 2;
-  const prix = (typeof prixLitre === "number" && prixLitre > 0)
-    ? prixLitre
-    : TRAJET.prixCarburantDefaut;
+  const prix = (typeof prixLitre === "number" && prixLitre > 0) ? prixLitre : TRAJET.prixCarburantDefaut;
   return {
     km,
     minutes: TRAJET.dureeAllerMin * 2,
@@ -427,11 +178,7 @@ export function coutAllerRetour(prixLitre = null) {
   };
 }
 
-// Liens externes
 export const LIENS = {
-  // Aucun paramètre `origin` : c'est Google Maps qui utilise la position
-  // de l'appareil. L'app elle-même ne demande AUCUNE permission
-  // (ni géolocalisation, ni notifications).
   gmaps: `https://www.google.com/maps/dir/?api=1&destination=${DZ.lat},${DZ.lon}&travelmode=driving&dir_action=navigate`,
   irm: "https://www.meteo.be/fr/namur",
   windy: `https://www.windy.com/${DZ.lat}/${DZ.lon}?wind,${DZ.lat},${DZ.lon},11`,
@@ -439,4 +186,4 @@ export const LIENS = {
   briefing: "https://pro.paraclubnamur.be/fr/meteo",
 };
 
-export const VERSION = "2.0.0";
+export const VERSION = "2.1.0";

@@ -1,30 +1,19 @@
 // ============================================================
-// Vent4000 — Acquisition météo (v2.0)
+// Vent4000 — Acquisition des données (v2.1)
 //
-// Quatre sources, récupérées en parallèle, toutes gratuites, sans clé
-// et ouvertes en CORS (utilisables directement depuis GitHub Pages) :
-//
-//  1. PRINCIPALE — Open-Meteo « best match » (ICON-D2 2 km sur 48 h puis
-//     ICON-EU/global) : TOUTES les variables utiles au saut — vent sol et
-//     basse couche, rafales, 9 niveaux de pression (vent, température,
-//     humidité, couverture nuageuse, géopotentiel), visibilité, code
-//     temps présent, pluie/averses, CAPE/CIN/indice de soulèvement,
-//     potentiel d'éclairs, isotherme 0 °C, couche limite.
-//  2. MODÈLES — 7 modèles déterministes indépendants (3 haute résolution
-//     + 4 globaux), sur les critères qui décident d'un saut.
-//  3. ENSEMBLES — 122 membres (ICON-EPS, ECMWF-ENS, GEFS) : la dispersion
-//     réelle de la prévision, donc une vraie probabilité.
-//  4. METAR — observation de Charleroi (EBCI) pour l'heure en cours,
-//     chargée à part (chargerMetar) pour ne jamais retarder l'affichage.
-//
-// Seule la source principale est indispensable : les trois autres
-// enrichissent la décision et l'app reste fonctionnelle sans elles.
+//  1. MODÈLES — 5 modèles de 1,3 à 2,2 km (AROME HD, ICON-D2, HARMONIE
+//     KNMI et DMI, UKMO 2 km) et 3 régionaux de 7 à 10 km pour la fin de
+//     semaine, en une requête Open-Meteo : vent, rafales, couverture basse,
+//     base des nuages (quand le modèle la calcule), visibilité, temps présent.
+//  2. PROFIL — vent et température en altitude (ICON, affichage seul).
+//  3. AÉRO — METAR et TAF de Charleroi (MET Norway), chargés à part :
+//     l'affichage n'attend jamais ce serveur.
+// Toutes ces sources sont gratuites, sans clé, ouvertes en CORS.
 // ============================================================
 
-import { DZ, NIVEAUX_PRESSION, NIVEAUX_AGL, MODELES, ENSEMBLES, METAR } from "./config.js";
-import { parseMetar } from "./metar.js";
+import { DZ, MODELES, AERODROME } from "./config.js";
+import { parseMetar, parseTaf, tousMessages } from "./metar.js";
 
-const HPA = NIVEAUX_PRESSION.map((n) => n.hpa);
 const BASE = {
   latitude: DZ.lat,
   longitude: DZ.lon,
@@ -32,83 +21,81 @@ const BASE = {
   wind_speed_unit: "kmh",
   forecast_days: "7",
 };
-const VARIABLES_VOTE = ["wind_speed_10m", "wind_gusts_10m", "precipitation", "cloud_cover_low"];
-
-export function urlPrincipale() {
-  const surface = [
-    "temperature_2m", "dew_point_2m", "relative_humidity_2m",
-    "precipitation", "showers", "precipitation_probability", "weather_code",
-    "cloud_cover", "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high",
-    "visibility", "cape", "convective_inhibition", "lifted_index", "lightning_potential",
-    "freezing_level_height", "boundary_layer_height",
-    "wind_speed_10m", "wind_gusts_10m", "wind_direction_10m",
-  ];
-  const agl = NIVEAUX_AGL.flatMap((m) => [`wind_speed_${m}m`, `wind_direction_${m}m`]);
-  const altitude = HPA.flatMap((p) => [
-    `wind_speed_${p}hPa`, `wind_direction_${p}hPa`, `temperature_${p}hPa`,
-    `relative_humidity_${p}hPa`, `cloud_cover_${p}hPa`, `geopotential_height_${p}hPa`,
-  ]);
-  const params = new URLSearchParams({
-    ...BASE,
-    hourly: [...surface, ...agl, ...altitude].join(","),
-    daily: "sunrise,sunset",
-    current: "temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
-  });
-  return `https://api.open-meteo.com/v1/forecast?${params}`;
-}
+const CHAMPS = {
+  wind_speed_10m: "vent", wind_gusts_10m: "rafales", wind_direction_10m: "dir",
+  cloud_cover_low: "nuagesBas", cloud_cover_mid: "nuagesMoyens", cloud_base: "base",
+  visibility: "visibilite", weather_code: "code", precipitation: "precip",
+};
+export const NIVEAUX_PROFIL = [925, 850, 700, 600];
+export const NIVEAUX_AGL = [180, 120, 80];
 
 export function urlModeles() {
   const params = new URLSearchParams({
     ...BASE,
-    hourly: VARIABLES_VOTE.join(","),
+    hourly: Object.keys(CHAMPS).join(","),
     models: MODELES.map((m) => m.id).join(","),
   });
   return `https://api.open-meteo.com/v1/forecast?${params}`;
 }
 
-export function urlEnsembles() {
+export function urlProfil() {
+  const hourly = [
+    "temperature_2m", "freezing_level_height", "cape",
+    ...NIVEAUX_AGL.flatMap((m) => [`wind_speed_${m}m`, `wind_direction_${m}m`]),
+    ...NIVEAUX_PROFIL.flatMap((p) => [`wind_speed_${p}hPa`, `wind_direction_${p}hPa`, `temperature_${p}hPa`, `geopotential_height_${p}hPa`]),
+  ];
   const params = new URLSearchParams({
     ...BASE,
-    hourly: VARIABLES_VOTE.join(","),
-    models: ENSEMBLES.map((e) => e.id).join(","),
+    hourly: hourly.join(","),
+    daily: "sunrise,sunset",
+    models: "icon_seamless",
   });
-  return `https://ensemble-api.open-meteo.com/v1/ensemble?${params}`;
+  return `https://api.open-meteo.com/v1/forecast?${params}`;
 }
 
-export function urlMetar() {
-  const params = new URLSearchParams({
-    station: METAR.station, data: "metar", hours: "3", format: "onlycomma", tz: "UTC",
-  });
-  return `https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?${params}`;
-}
+export const URL_METAR = `https://api.met.no/weatherapi/tafmetar/1.0/metar?icao=${AERODROME.station}`;
+export const URL_TAF = `https://api.met.no/weatherapi/tafmetar/1.0/taf?icao=${AERODROME.station}`;
 
-/**
- * fetch() avec timeout — sans ça, une requête qui ne répond jamais (réseau
- * capricieux en plein champ) laisse l'app bloquée indéfiniment.
- */
 function fetchAvecTimeout(url, delaiMs) {
   const controleur = new AbortController();
   const minuteur = setTimeout(() => controleur.abort(), delaiMs);
   return fetch(url, { signal: controleur.signal }).finally(() => clearTimeout(minuteur));
 }
 
-/**
- * Date réelle de la réponse (en-tête HTTP `Date`) : si le service worker
- * sert une réponse de secours hors-ligne, l'âge affiché reste vrai.
- */
+/** Date réelle de la réponse (en-tête HTTP) : l'âge affiché reste vrai hors-ligne. */
 function dateReponse(rep) {
   const entete = rep?.headers?.get?.("date");
   const d = entete ? new Date(entete) : null;
   return d && !Number.isNaN(d.getTime()) ? d : new Date();
 }
 
+const FMT_BXL = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/Brussels", year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+});
+function decalageBruxelles(ms) {
+  const p = Object.fromEntries(FMT_BXL.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) - ms;
+}
+/**
+ * Instant UTC (ms) d'une heure locale Europe/Brussels « 2026-10-25T14:00 ».
+ * Nécessaire pour croiser les prévisions (heure locale) avec le TAF (UTC),
+ * y compris le jour du changement d'heure.
+ */
+export function utcDepuisLocal(iso) {
+  const [d, t] = iso.split("T");
+  const [Y, M, D] = d.split("-").map(Number);
+  const [h, mi] = t.split(":").map(Number);
+  const naif = Date.UTC(Y, M - 1, D, h, mi);
+  let ms = naif - decalageBruxelles(naif);
+  const corr = decalageBruxelles(ms);
+  if (naif - corr !== ms) ms = naif - corr;
+  return ms;
+}
+
 const val = (tab, i) => (tab?.[i] ?? null);
 
-/**
- * Modèles déterministes → Map iso → { [idModele]: {vent, rafales, precip, nuagesBas} }.
- * Un modèle dont l'horizon est dépassé renvoie null : il est simplement
- * absent du vote à cette heure (cf. probabilite.js).
- */
+/** Modèles → Map iso → { [idModele]: {vent, rafales, dir, nuagesBas, nuagesMoyens, base, visibilite, code, precip} }. */
 export function lireModeles(json) {
   const h = json?.hourly;
   const res = new Map();
@@ -116,12 +103,9 @@ export function lireModeles(json) {
   h.time.forEach((iso, i) => {
     const parModele = {};
     for (const m of MODELES) {
-      const s = {
-        vent: val(h[`wind_speed_10m_${m.id}`], i),
-        rafales: val(h[`wind_gusts_10m_${m.id}`], i),
-        precip: val(h[`precipitation_${m.id}`], i),
-        nuagesBas: val(h[`cloud_cover_low_${m.id}`], i),
-      };
+      const s = {};
+      for (const [variable, champ] of Object.entries(CHAMPS)) s[champ] = val(h[`${variable}_${m.id}`], i);
+      // Hors portée du modèle : toutes ses valeurs sont nulles → absent.
       if (s.vent != null || s.rafales != null) parModele[m.id] = s;
     }
     res.set(iso, parModele);
@@ -130,198 +114,95 @@ export function lireModeles(json) {
 }
 
 /**
- * Ensembles → Map iso → [{ ens, vent, rafales, precip, nuagesBas }].
- * Les clés Open-Meteo sont `<variable>[_memberNN]_<suffixe>` ; le run de
- * contrôle n'a pas de numéro de membre.
+ * Assemble jours/heures à partir du profil (axe temporel + lever/coucher)
+ * et y greffe les modèles. Pur : testable sans réseau.
  */
-export function lireEnsembles(json) {
-  const h = json?.hourly;
-  const res = new Map();
-  if (!h?.time) return res;
-  const CHAMP = { wind_speed_10m: "vent", wind_gusts_10m: "rafales", precipitation: "precip", cloud_cover_low: "nuagesBas" };
-  const re = /^(wind_speed_10m|wind_gusts_10m|precipitation|cloud_cover_low)_(?:member(\d+)_)?(.+)$/;
-  const membres = new Map(); // "ens|nn" → { ens, champs: {vent: tab, …} }
-  for (const [cle, tab] of Object.entries(h)) {
-    const m = re.exec(cle);
-    if (!m) continue;
-    const ens = ENSEMBLES.find((e) => e.suffixe === m[3]);
-    if (!ens) continue;
-    const id = `${ens.id}|${m[2] ?? "00"}`;
-    if (!membres.has(id)) membres.set(id, { ens: ens.id, champs: {} });
-    membres.get(id).champs[CHAMP[m[1]]] = tab;
-  }
-  h.time.forEach((iso, i) => {
-    const liste = [];
-    for (const { ens, champs } of membres.values()) {
-      const s = {
-        ens,
-        vent: val(champs.vent, i),
-        rafales: val(champs.rafales, i),
-        precip: val(champs.precip, i),
-        nuagesBas: val(champs.nuagesBas, i),
-      };
-      // Un membre sans rafale ne peut pas juger le critère décisif : on
-      // l'écarte plutôt que de le compter comme un « oui ».
-      if (s.rafales != null && s.vent != null) liste.push(s);
-    }
-    res.set(iso, liste);
-  });
-  return res;
-}
-
-/**
- * Normalise la réponse principale en jours/heures et y greffe, heure par
- * heure, les votes des modèles et des membres d'ensemble.
- * Pur : testable sans réseau.
- */
-export function normaliser(d, modeles = new Map(), ensembles = new Map()) {
-  const h = d.hourly;
+export function normaliser(profil, modeles = new Map()) {
+  const h = profil.hourly;
   const parJour = new Map();
-
   for (let i = 0; i < h.time.length; i++) {
-    const iso = h.time[i];               // "2026-07-11T14:00" (heure locale BE)
+    const iso = h.time[i];
     const date = iso.slice(0, 10);
-    const heure = parseInt(iso.slice(11, 13), 10);
-
     const niveaux = {};
-    for (const p of HPA) {
+    for (const p of NIVEAUX_PROFIL) {
       const gph = val(h[`geopotential_height_${p}hPa`], i);
       niveaux[p] = {
         vent: val(h[`wind_speed_${p}hPa`], i),
         dir: val(h[`wind_direction_${p}hPa`], i),
         temp: val(h[`temperature_${p}hPa`], i),
-        humidite: val(h[`relative_humidity_${p}hPa`], i),
-        nuages: val(h[`cloud_cover_${p}hPa`], i),
         agl: gph != null ? Math.round(gph - DZ.altitudeTerrain) : null,
       };
     }
-
     const niveauxAGL = {};
-    for (const m of NIVEAUX_AGL) {
-      niveauxAGL[m] = { vent: val(h[`wind_speed_${m}m`], i), dir: val(h[`wind_direction_${m}m`], i) };
-    }
-
-    const heureObj = {
-      iso, heure,
-      vent10: val(h.wind_speed_10m, i),
-      rafales10: val(h.wind_gusts_10m, i),
-      direction10: val(h.wind_direction_10m, i),
+    for (const m of NIVEAUX_AGL) niveauxAGL[m] = { vent: val(h[`wind_speed_${m}m`], i), dir: val(h[`wind_direction_${m}m`], i) };
+    const heure = {
+      iso,
+      heure: parseInt(iso.slice(11, 13), 10),
+      utc: utcDepuisLocal(iso),
       t2m: val(h.temperature_2m, i),
-      pointRosee: val(h.dew_point_2m, i),
-      humidite: val(h.relative_humidity_2m, i),
-      precip: val(h.precipitation, i),
-      averses: val(h.showers, i),
-      probaPluie: val(h.precipitation_probability, i),
-      codeTemps: val(h.weather_code, i),
-      nuagesTotal: val(h.cloud_cover, i),
-      nuagesBas: val(h.cloud_cover_low, i),
-      nuagesMoyens: val(h.cloud_cover_mid, i),
-      nuagesHauts: val(h.cloud_cover_high, i),
-      visibilite: val(h.visibility, i),
+      isoZero: val(h.freezing_level_height, i) != null ? Math.round(h.freezing_level_height[i] - DZ.altitudeTerrain) : null,
       cape: val(h.cape, i),
-      cin: val(h.convective_inhibition, i),
-      li: val(h.lifted_index, i),
-      eclairs: val(h.lightning_potential, i),
-      isoZero: val(h.freezing_level_height, i) != null
-        ? Math.round(h.freezing_level_height[i] - DZ.altitudeTerrain) : null,
-      coucheLimite: val(h.boundary_layer_height, i),
       niveaux,
       niveauxAGL,
       modeles: modeles.get(iso) ?? {},
-      ensemble: ensembles.get(iso) ?? [],
     };
-
     if (!parJour.has(date)) parJour.set(date, []);
-    parJour.get(date).push(heureObj);
+    parJour.get(date).push(heure);
   }
-
-  return d.daily.time.map((date, i) => ({
+  return profil.daily.time.map((date, i) => ({
     date,
-    sunrise: d.daily.sunrise[i],
-    sunset: d.daily.sunset[i],
+    sunrise: profil.daily.sunrise[i],
+    sunset: profil.daily.sunset[i],
     heures: parJour.get(date) ?? [],
   }));
 }
 
 /**
- * METAR le plus récent d'une réponse CSV IEM (« station,valid,metar »).
- * ⚠ IEM trie du plus récent au plus ancien : on choisit sur l'horodatage
- * `valid`, jamais sur la position de la ligne.
- */
-export function dernierMetar(csv) {
-  const lignes = String(csv ?? "").trim().split("\n").filter((l) => /^[A-Z]{4},/.test(l));
-  if (!lignes.length) return null;
-  const plusRecente = lignes
-    .map((l) => { const [, valid, ...reste] = l.split(","); return { valid, metar: reste.join(",").trim() }; })
-    .sort((a, b) => b.valid.localeCompare(a.valid))[0];
-  return plusRecente.metar || null;
-}
-
-/**
- * Récupère et normalise toutes les sources.
- * @returns {Promise<{jours, recupereLe, actuel, metar:null, sources}>}
+ * Prévisions : modèles + profil.
+ * @returns {Promise<{jours, recupereLe, sources:{modeles:boolean}}>}
  */
 export async function chargerMeteo() {
-  const [rP, rM, rE] = await Promise.allSettled([
-    fetchAvecTimeout(urlPrincipale(), 15000),
+  const [rP, rM] = await Promise.allSettled([
+    fetchAvecTimeout(urlProfil(), 15000),
     fetchAvecTimeout(urlModeles(), 15000),
-    fetchAvecTimeout(urlEnsembles(), 20000),
   ]);
+  const cause = (r) => r.status === "fulfilled"
+    ? `HTTP ${r.value.status}`
+    : (r.reason?.name === "AbortError" ? "délai dépassé" : r.reason?.message ?? "erreur réseau");
 
-  if (rP.status !== "fulfilled" || !rP.value.ok) {
-    const cause = rP.status === "fulfilled"
-      ? `HTTP ${rP.value.status}`
-      : (rP.reason?.name === "AbortError" ? "délai dépassé" : rP.reason?.message ?? "erreur réseau");
-    throw new Error(`Open-Meteo indisponible (${cause})`);
-  }
-  const recupereLe = dateReponse(rP.value).toISOString();
-  const d = await rP.value.json();
-  if (!d?.hourly?.time?.length || !d?.daily?.time?.length) {
+  if (rM.status !== "fulfilled" || !rM.value.ok) throw new Error(`Open-Meteo indisponible (${cause(rM)})`);
+  if (rP.status !== "fulfilled" || !rP.value.ok) throw new Error(`Open-Meteo indisponible (${cause(rP)})`);
+  const recupereLe = dateReponse(rM.value).toISOString();
+  const [jP, jM] = await Promise.all([rP.value.json(), rM.value.json()]);
+  if (!jP?.hourly?.time?.length || !jP?.daily?.time?.length || !jM?.hourly?.time?.length) {
     throw new Error("Réponse Open-Meteo incomplète");
   }
-
-  async function lireJson(r) {
-    if (r.status !== "fulfilled" || !r.value.ok) return null;
-    try { return await r.value.json(); } catch { return null; }
-  }
-  const [jM, jE] = await Promise.all([lireJson(rM), lireJson(rE)]);
   const modeles = lireModeles(jM);
-  const ensembles = lireEnsembles(jE);
-
-  const actuel = d.current
-    ? {
-        iso: d.current.time,
-        vent: d.current.wind_speed_10m ?? null,
-        direction: d.current.wind_direction_10m ?? null,
-        rafales: d.current.wind_gusts_10m ?? null,
-        temp: d.current.temperature_2m ?? null,
-      }
-    : null;
-
-  return {
-    jours: normaliser(d, modeles, ensembles),
-    recupereLe,
-    actuel,
-    metar: null, // arrive à part (chargerMetar), sans retarder l'affichage
-    sources: {
-      modeles: modeles.size > 0,
-      ensembles: ensembles.size > 0,
-      metar: false,
-    },
-  };
+  return { jours: normaliser(jP, modeles), recupereLe, sources: { modeles: modeles.size > 0 } };
 }
 
 /**
- * Observation METAR, chargée séparément : le serveur IEM répond parfois en
- * plusieurs secondes, et l'app ne doit jamais attendre l'observation pour
- * afficher la prévision. @returns {Promise<object|null>}
+ * METAR + TAF de Charleroi. Ne lève jamais : null pour ce qui manque.
+ * @returns {Promise<{metar:object|null, taf:object|null}>}
  */
-export async function chargerMetar() {
-  try {
-    const rep = await fetchAvecTimeout(urlMetar(), 20000);
-    if (!rep.ok) return null;
-    return parseMetar(dernierMetar(await rep.text()));
-  } catch {
-    return null;
+export async function chargerAero(maintenant = new Date()) {
+  async function texte(url) {
+    try {
+      const rep = await fetchAvecTimeout(url, 15000);
+      return rep.ok ? await rep.text() : null;
+    } catch {
+      return null;
+    }
   }
+  const [m, t] = await Promise.all([texte(URL_METAR), texte(URL_TAF)]);
+  // MET Norway renvoie l'historique récent : on garde le message le plus
+  // récent d'après sa propre date, pas d'après sa position.
+  const plusRecent = (texte, lire, date) => {
+    const lus = tousMessages(texte).map((x) => { try { return lire(x, maintenant); } catch { return null; } }).filter(Boolean);
+    return lus.sort((a, b) => date(b) - date(a))[0] ?? null;
+  };
+  return {
+    metar: plusRecent(m, parseMetar, (x) => x.obs?.getTime() ?? 0),
+    taf: plusRecent(t, parseTaf, (x) => x.emis.getTime()),
+  };
 }

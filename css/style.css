@@ -414,7 +414,7 @@ button { font: inherit; color: inherit; }
 
 /* ---------- Profil vertical ---------- */
 .profil { display: grid; gap: 0; }
-.profil-entete, .niveau { display: grid; grid-template-columns: 1.25fr 1.2fr 1.2fr 0.5fr; align-items: center; gap: var(--sp-2); }
+.profil-entete, .niveau { display: grid; grid-template-columns: 1fr 1.4fr 0.5fr; align-items: center; gap: var(--sp-2); }
 .profil-entete { padding-bottom: 6px; border-bottom: 1px solid var(--bord); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--encre-3); }
 .profil-entete span:last-child { text-align: right; }
 .niveau { padding: 5px 0; border-bottom: 1px solid var(--bord); }
@@ -457,6 +457,29 @@ button { font: inherit; color: inherit; }
 .stat-valeur { font-family: var(--mono); font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .stat-valeur small { margin-left: 5px; font-size: 11px; color: var(--encre-3); }
 
+/* ---------- Sources, TAF, règles (v2.1) ---------- */
+.cj-accord { display: flex; flex-direction: column; align-items: flex-end; line-height: 1; }
+.cj-accord b { font-family: var(--mono); font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cj-accord small { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--encre-3); margin-top: 2px; }
+.hero-precision { font-size: 12.5px; color: var(--encre-3); }
+.taf-validite { margin: 6px 0 0; font-size: 12.5px; color: var(--encre-3); }
+.taf-brut { display: block; margin-top: 6px; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; word-break: break-word; color: var(--encre); }
+.sous-etiquette { margin: var(--sp-4) 0 0; font-family: var(--titre); font-size: 13px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--encre-3); }
+.sources-cadre { overflow-x: auto; }
+.sources { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+.sources th, .sources td { padding: 6px 6px; text-align: right; border-bottom: 1px solid var(--bord); white-space: nowrap; }
+.sources thead th { font-family: "Barlow", sans-serif; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--encre-3); }
+.sources tbody th { text-align: left; font-family: "Barlow", sans-serif; font-weight: 600; font-size: 13px; }
+.sources tbody th small { font-weight: 400; color: var(--encre-3); margin-left: 4px; }
+.sources tr:last-child th, .sources tr:last-child td { border-bottom: 0; }
+.src-verdict { font-weight: 700; }
+.src-oui .src-verdict { color: var(--vert); }
+.src-non .src-verdict, .src-non td { color: var(--rouge); }
+.src-limite .src-verdict { color: var(--ambre); }
+.resume-regles { margin: 0 0 var(--sp-4); padding-left: 18px; font-size: 13.5px; color: var(--encre-2); }
+.resume-regles li { margin-bottom: 4px; }
+.resume-regles strong { font-family: var(--mono); color: var(--encre); }
+
 /* ---------- Réglages ---------- */
 .titre-vue { margin-top: var(--sp-2); font-size: 30px; text-transform: uppercase; }
 .champ { display: grid; gap: 4px; margin-bottom: var(--sp-4); }
@@ -481,5 +504,4 @@ button { font: inherit; color: inherit; }
   .entete-sous { display: none; }
   .hero-verdict { font-size: 25px; }
   .jauge-valeur { font-size: 32px; }
-  .profil-entete, .niveau { grid-template-columns: 1.1fr 1fr 1.25fr 0.5fr; }
 }
