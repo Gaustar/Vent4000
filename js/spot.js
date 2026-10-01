@@ -20,7 +20,7 @@ import { VOL } from "./config.js";
  * La direction météo est celle d'où vient le vent : il pousse donc
  * vers direction + 180°.
  */
-function vecteur(vitesseKmh, directionDeg) {
+export function vecteurVent(vitesseKmh, directionDeg) {
   const v = vitesseKmh / 3.6;
   const rad = (directionDeg * Math.PI) / 180;
   return { est: -v * Math.sin(rad), nord: -v * Math.cos(rad) };
@@ -42,11 +42,16 @@ export function profilVent(h) {
     }
   }
   for (const n of Object.values(h.niveaux ?? {})) {
-    if (n?.vent != null && n?.dir != null && n?.agl != null) {
+    // Un niveau de pression sous ~10 m AGL est extrapolé sous le terrain
+    // (1000 hPa par haute pression) : il fausserait le bas du profil.
+    if (n?.vent != null && n?.dir != null && n?.agl != null && n.agl > 10) {
       points.push({ agl: n.agl, vent: n.vent, dir: n.dir });
     }
   }
-  return points.sort((a, b) => a.agl - b.agl);
+  // Deux points à la même altitude rendraient l'interpolation 0/0 (NaN).
+  return points
+    .sort((a, b) => a.agl - b.agl)
+    .filter((p, i, t) => i === 0 || p.agl > t[i - 1].agl);
 }
 
 /**
@@ -66,8 +71,8 @@ export function ventAAltitude(profil, agl) {
     const b = profil[i];
     if (agl <= b.agl) {
       const t = (agl - a.agl) / (b.agl - a.agl);
-      const va = vecteur(a.vent, a.dir);
-      const vb = vecteur(b.vent, b.dir);
+      const va = vecteurVent(a.vent, a.dir);
+      const vb = vecteurVent(b.vent, b.dir);
       const est = va.est + (vb.est - va.est) * t;
       const nord = va.nord + (vb.nord - va.nord) * t;
       return Math.hypot(est, nord) * 3.6;
@@ -100,8 +105,8 @@ export function derive(profil, bas, haut, tauxChute) {
         const t = (agl - a.agl) / (b.agl - a.agl);
         // On interpole les composantes, pas l'angle : moyenner 350° et 10°
         // donnerait 180° (plein sud) au lieu de 0° (plein nord).
-        const va = vecteur(a.vent, a.dir);
-        const vb = vecteur(b.vent, b.dir);
+        const va = vecteurVent(a.vent, a.dir);
+        const vb = vecteurVent(b.vent, b.dir);
         return {
           composantes: {
             est: va.est + (vb.est - va.est) * t,
@@ -121,7 +126,7 @@ export function derive(profil, bas, haut, tauxChute) {
     const tranche = Math.min(PAS, haut - alt);
     const dt = tranche / tauxChute;
     const p = ventA(alt + tranche / 2);
-    const v = p.composantes ?? vecteur(p.vent, p.dir);
+    const v = p.composantes ?? vecteurVent(p.vent, p.dir);
     est += v.est * dt;
     nord += v.nord * dt;
     duree += dt;

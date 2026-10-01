@@ -1,10 +1,10 @@
 // ============================================================
 // Vent4000 — Service worker
-// Shell applicatif : cache-first. API Open-Meteo : network-first
+// Shell applicatif : cache-first. API météo (Open-Meteo, IEM) : network-first
 // avec repli sur la dernière prévision en cache (mode hors-ligne).
 // ============================================================
 
-const CACHE = "vent4000-v17";
+const CACHE = "vent4000-v18";
 const SHELL = [
   "./",
   "./index.html",
@@ -13,8 +13,12 @@ const SHELL = [
   "./js/config.js",
   "./js/carburant.js",
   "./js/deplacement.js",
+  "./js/facteurs.js",
   "./js/meteo.js",
+  "./js/metar.js",
+  "./js/nuages.js",
   "./js/ouverture.js",
+  "./js/probabilite.js",
   "./js/scoring.js",
   "./js/spot.js",
   "./js/tendance.js",
@@ -49,13 +53,15 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
 
-  // API météo : réseau d'abord, cache en secours
-  if (url.hostname === "api.open-meteo.com") {
+  // API météo (prévisions, ensembles, METAR) : réseau d'abord, cache en secours
+  if (["api.open-meteo.com", "ensemble-api.open-meteo.com", "mesonet.agron.iastate.edu"].includes(url.hostname)) {
     e.respondWith(
       fetch(e.request)
         .then((rep) => {
-          const copie = rep.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copie));
+          if (rep.ok) {
+            const copie = rep.clone();
+            caches.open(CACHE).then((c) => c.put(e.request, copie));
+          }
           return rep;
         })
         .catch(() => caches.match(e.request))

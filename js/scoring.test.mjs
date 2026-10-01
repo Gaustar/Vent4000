@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { scoreHeure, scoreCreneau, fenetreSautable, meilleurVerdict, ventPiste, plafondEstime, niveauConfiance } from "./scoring.js";
+import { scoreHeure, scoreCreneau, fenetreSautable, meilleurVerdict, ventPiste, plafondEstime } from "./scoring.js";
 import { LEGAL_BE } from "./config.js";
 
 const SEUILS_TANDEM = { ventMax: 28, plafondMin: 1500 };
@@ -20,25 +20,6 @@ function heure(overrides = {}) {
 
 // ---- « Aucune information ne doit passer à la trappe » ----------------
 
-test("La confiance confronte AUSSI les rafales, pas seulement le vent moyen", () => {
-  // Modèles parfaitement d'accord sur la moyenne, en total désaccord sur
-  // la rafale. Avant la v1.6.0 la rafale était téléchargée puis ignorée :
-  // l'app annonçait « confiance haute » sur un verdict que la rafale
-  // décide.
-  const accordMoyenne = niveauConfiance(20, [
-    { nom: "AROME", vent: 20, rafales: 55 },
-    { nom: "ECMWF", vent: 20, rafales: 22 },
-  ], 0, 25);
-  assert.equal(accordMoyenne.niveau, "faible",
-    `écart rafale de 30 km/h attendu en confiance faible, reçu ${accordMoyenne.niveau} (ecart ${accordMoyenne.ecart})`);
-  assert.equal(accordMoyenne.ecart, 30);
-});
-
-test("nModeles compte les modèles, pas les écarts (moyenne + rafale = 1 modèle)", () => {
-  const c = niveauConfiance(20, [{ nom: "ECMWF", vent: 21, rafales: 26 }], 0, 25);
-  assert.equal(c.nModeles, 2, "1 modèle de comparaison + le primaire");
-});
-
 test("Vent fort à la hauteur d'ouverture -> orange (la colonne de vent entre dans le verdict)", () => {
   // Sol calme, mais 70 km/h à l'altitude d'ouverture : sous voile, on ne
   // pénètre plus. Avant la v1.6.0 la colonne de vent était affichée et
@@ -53,20 +34,6 @@ test("Vent fort à la hauteur d'ouverture -> orange (la colonne de vent entre da
   assert.ok(s.raisons.some((r) => r.includes("à l'ouverture")),
     `motif « à l'ouverture » attendu, reçu : ${s.raisons.join(" | ")}`);
 });
-
-test("Relevé temps réel très différent de la prévision -> orange", () => {
-  const s = scoreHeure(heure({ vent10: 10, rafales10: 12, ventActuel: 28 }), SEUILS_TANDEM);
-  assert.equal(s.verdict, "orange");
-  assert.ok(s.raisons.some((r) => r.startsWith("Relevé actuel")),
-    `motif nowcast attendu, reçu : ${s.raisons.join(" | ")}`);
-});
-
-test("Nowcast proche de la prévision -> aucun signal", () => {
-  const s = scoreHeure(heure({ vent10: 10, rafales10: 12, ventActuel: 13 }), SEUILS_TANDEM);
-  assert.equal(s.verdict, "vert");
-});
-
-// ---- Étage 0 : limites légales belges (CIR/GDF-05 §6) ----------------
 
 test("Vent moyen au-dessus de 25 kts -> rouge avec motif LÉGAL distinct", () => {
   const s = scoreHeure(heure({ vent10: LEGAL_BE.ventMoyenMaxSol + 1, rafales10: 0 }), SEUILS_MAX_LEGAL);
@@ -176,32 +143,6 @@ test("Vent stable d'une heure à l'autre -> pas de dégradation liée à la tend
   assert.equal(s.verdict, "vert");
 });
 
-test("Confiance faible entre modèles -> plafonné à orange même si tout est vert", () => {
-  const s = scoreHeure(
-    heure({ vent10: 10, comparaisons: { arome: { vent: 11 }, ecmwf: { vent: 32 } } }),
-    SEUILS_TANDEM
-  );
-  assert.equal(s.verdict, "orange");
-  assert.ok(s.raisons.some((r) => r.includes("divergents")));
-});
-
-test("Confiance haute entre modèles -> vert conservé", () => {
-  const s = scoreHeure(
-    heure({ vent10: 10, comparaisons: { arome: { vent: 11 }, ecmwf: { vent: 12 } } }),
-    SEUILS_TANDEM
-  );
-  assert.equal(s.verdict, "vert");
-});
-
-test("Confiance faible n'écrase pas un verdict déjà rouge/orange (raisons plus utiles conservées)", () => {
-  const s = scoreHeure(
-    heure({ vent10: 30, comparaisons: { arome: { vent: 11 }, ecmwf: { vent: 32 } } }),
-    SEUILS_TANDEM
-  );
-  assert.equal(s.verdict, "rouge");
-  assert.ok(s.raisons.some((r) => r.includes("Vent")));
-});
-
 test("scoreCreneau : 2h vertes consécutives -> vert", () => {
   assert.equal(scoreCreneau(["orange", "vert", "vert", "rouge"]), "vert");
 });
@@ -222,24 +163,25 @@ test("meilleurVerdict privilégie le meilleur créneau du jour", () => {
 
 // --- Ciel bouché (régression : faux vert corrigé en v1.4.0) -------------
 
-test("Couche moyenne compacte (100 %) -> rouge, pas vert (avion ne peut pas larguer VFR)", () => {
-  // Avant v1.4.0 : la bande orange s'arrêtait à 75 % de couverture, donc
-  // 100 % passait à travers et ressortait VERT sans aucune raison.
+// v2.0 : une couche compacte n'est plus un rouge automatique. On saute
+// SOUS la couche si son plafond reste au-dessus du minimum du niveau ; le
+// verdict passe orange avec l'altitude de largage réellement possible.
+test("Couche moyenne compacte (100 %) -> orange « largage limité », jamais vert", () => {
   const s = scoreHeure(heure({ nuagesMoyens: 100, nuagesHauts: 100 }), SEUILS_TANDEM);
-  assert.equal(s.verdict, "rouge");
-  assert.ok(s.raisons.some((r) => r.includes("largage")), s.raisons.join(" · "));
-});
-
-test("Couche basse compacte (95 %) -> rouge avec un message distinct", () => {
-  const s = scoreHeure(heure({ t2m: 20, pointRosee: 2, nuagesBas: 95 }), SEUILS_TANDEM);
-  assert.equal(s.verdict, "rouge");
-  assert.ok(s.raisons.some((r) => r.includes("couche basse")), s.raisons.join(" · "));
-});
-
-test("Ciel morcelé (50 % bas + 40 % moyen) -> orange, pas rouge : aucune couche n'est compacte", () => {
-  const s = scoreHeure(heure({ t2m: 25, pointRosee: 2, nuagesBas: 50, nuagesMoyens: 40 }), SEUILS_TANDEM);
   assert.equal(s.verdict, "orange");
-  assert.ok(s.raisons.some((r) => r.includes("partiellement")));
+  assert.ok(s.raisons.some((r) => r.includes("largage limité")), s.raisons.join(" · "));
+});
+
+test("Couche basse compacte sous le minimum du niveau -> rouge", () => {
+  const s = scoreHeure(heure({ t2m: 20, pointRosee: 11, nuagesBas: 95 }), SEUILS_TANDEM);
+  assert.equal(s.verdict, "rouge");
+  assert.ok(s.raisons.some((r) => r.startsWith("Plafond")), s.raisons.join(" · "));
+});
+
+test("Couche basse haute (base ~2,2 km) -> orange : on saute dessous, plus bas", () => {
+  const s = scoreHeure(heure({ t2m: 20, pointRosee: 2, nuagesBas: 95 }), SEUILS_TANDEM);
+  assert.equal(s.verdict, "orange");
+  assert.ok(s.raisons.some((r) => r.includes("largage limité")), s.raisons.join(" · "));
 });
 
 test("Nuages hauts seuls (cirrus 100 %) -> vert : ils sont au-dessus de l'altitude de largage", () => {
@@ -309,43 +251,6 @@ test("fenetreSautable : trou dans les heures -> pas de fenêtre à cheval sur le
 
 // --- Confiance pondérée par l'échéance ----------------------------------
 
-test("niveauConfiance : même accord entre modèles, la confiance baisse avec l'échéance", () => {
-  const modeles = [{ nom: "AROME", vent: 17 }, { nom: "ECMWF", vent: 16 }];
-  const proche = niveauConfiance(15, modeles, 0);
-  const lointaine = niveauConfiance(15, modeles, 6);
-  assert.equal(proche.niveau, "haute");
-  assert.equal(lointaine.niveau, "moyenne");
-  // L'écart affiché reste l'écart réellement observé
-  assert.equal(lointaine.ecart, 2);
-  assert.equal(lointaine.penalite, 10);
-});
-
-test("niveauConfiance : J+0 et J+1 ne sont pas pénalisés", () => {
-  const modeles = [{ nom: "ECMWF", vent: 16 }];
-  assert.equal(niveauConfiance(15, modeles, 0).penalite, 0);
-  assert.equal(niveauConfiance(15, modeles, 1).penalite, 0);
-});
-
-test("scoreHeure : au loin, un léger désaccord entre modèles suffit à plafonner le vert à orange", () => {
-  // À J+0 un écart de 4 km/h reste une confiance haute -> vert.
-  // À J+6 (pénalité +10) le même écart devient "faible" -> orange.
-  const modeles = { arome: { vent: 14 }, ecmwf: { vent: 12 } };
-  const proche = scoreHeure(heure({ vent10: 10, comparaisons: modeles, echeanceJours: 0 }), SEUILS_TANDEM);
-  const lointain = scoreHeure(heure({ vent10: 10, comparaisons: modeles, echeanceJours: 6 }), SEUILS_TANDEM);
-  assert.equal(proche.verdict, "vert");
-  assert.equal(lointain.verdict, "orange");
-});
-
-test("scoreHeure : au loin, des modèles parfaitement d'accord restent au vert", () => {
-  // Choix assumé : plafonner tout J+5/J+6 à orange rendrait inutile la
-  // fonction première de l'app (décider en début de semaine quel jour
-  // aller sauter). La pénalité dégrade la confiance, elle ne condamne pas
-  // l'échéance lointaine à elle seule.
-  const modeles = { arome: { vent: 11 }, ecmwf: { vent: 12 } };
-  const s = scoreHeure(heure({ vent10: 10, comparaisons: modeles, echeanceJours: 6 }), SEUILS_TANDEM);
-  assert.equal(s.verdict, "vert");
-});
-
 test("ventPiste : vent plein axe -> tout en face, rien en traversier", () => {
   const vp = ventPiste(20, 64, 64); // vent vient exactement de l'axe piste
   assert.equal(vp.face, 20);
@@ -356,23 +261,4 @@ test("ventPiste : vent perpendiculaire à l'axe -> tout en traversier", () => {
   const vp = ventPiste(20, 154, 64); // 64+90
   assert.equal(vp.traversier, 20);
   assert.equal(vp.face, 0);
-});
-
-test("niveauConfiance : un seul modèle disponible -> 'unique'", () => {
-  const c = niveauConfiance(15, [{ nom: "AROME", vent: null }, { nom: "ECMWF", vent: null }]);
-  assert.equal(c.niveau, "unique");
-  assert.equal(c.nModeles, 1);
-});
-
-test("niveauConfiance : 3 modèles proches -> confiance haute", () => {
-  const c = niveauConfiance(15, [{ nom: "AROME", vent: 17 }, { nom: "ECMWF", vent: 16 }]);
-  assert.equal(c.niveau, "haute");
-  assert.equal(c.nModeles, 3);
-  assert.equal(c.ecart, 2); // écart max = |15-17|
-});
-
-test("niveauConfiance : un modèle très divergent suffit à faire chuter la confiance", () => {
-  const c = niveauConfiance(15, [{ nom: "AROME", vent: 16 }, { nom: "ECMWF", vent: 35 }]);
-  assert.equal(c.niveau, "faible");
-  assert.equal(c.ecart, 20);
 });

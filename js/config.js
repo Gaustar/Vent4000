@@ -49,12 +49,24 @@ export const LEGAL_BE = {
   source: "CIR/GDF-05 Éd.4 (03/06/2016) §6 — DGTA",
 };
 
-// Niveaux de pression Open-Meteo et leur rôle parachutiste
+// Niveaux de pression Open-Meteo. Jusqu'à la v1.8 l'app n'en lisait que
+// quatre (925/850/700/600) et le vent seulement : le plafond était déduit
+// d'un unique écart température/point de rosée. On lit maintenant neuf
+// niveaux, avec pour chacun le vent, la température, l'humidité et la
+// COUVERTURE NUAGEUSE — ce qui donne un vrai profil vertical des couches
+// (base, épaisseur, givrage) entre le sol et l'altitude de largage.
+// Altitudes AGL indicatives (atmosphère standard, terrain à 181 m) : la
+// valeur réelle est recalculée à chaque heure depuis le géopotentiel.
 export const NIVEAUX_PRESSION = [
-  { hpa: 600, role: "Largage ~4000 m" },
-  { hpa: 700, role: "Chute ~3000 m" },
-  { hpa: 850, role: "Ouverture ~1500 m" },
-  { hpa: 925, role: "Basse couche ~600 m" },
+  { hpa: 1000, role: "Surface" },
+  { hpa: 975,  role: "~150 m" },
+  { hpa: 950,  role: "~380 m" },
+  { hpa: 925,  role: "Basse couche" },
+  { hpa: 900,  role: "~800 m" },
+  { hpa: 850,  role: "Ouverture" },
+  { hpa: 800,  role: "~1800 m" },
+  { hpa: 700,  role: "Chute" },
+  { hpa: 600,  role: "Largage" },
 ];
 
 // ============================================================
@@ -171,7 +183,7 @@ const FWCP_OUVERTURE_MIN = 914;      // 3000 ft AGL, §3.5, pour tous
 // aucune `hauteurOuverture` passer sous 914 m — invariants testés.
 export const NIVEAUX_PRATIQUE = {
   tandem:  { label: "Tandem",     ventMax: 28,                          ecartRafalesOrange: 9,  hauteurOuverture: 1500 },
-  aff:     { label: "Élève AFF",  ventMax: FWCP_VENT_JUSQU_BREVET_B,    ecartRafalesOrange: 9,  hauteurOuverture: 1500 },
+  aff:     { label: "Élève AFF",  ventMax: FWCP_VENT_JUSQU_BREVET_B,    ecartRafalesOrange: 9,  hauteurOuverture: 1500, eleve: true },
   brevetA: { label: "Brevet A",   ventMax: FWCP_VENT_JUSQU_BREVET_B,    ecartRafalesOrange: 13, hauteurOuverture: 1200 },
   brevetB: { label: "Brevet B",   ventMax: FWCP_VENT_JUSQU_BREVET_B,    ecartRafalesOrange: 13, hauteurOuverture: FWCP_OUVERTURE_MIN },
   brevetCD:{ label: "Brevet C/D", ventMax: FWCP_VENT_APRES_BREVET_B,    ecartRafalesOrange: 18, hauteurOuverture: FWCP_OUVERTURE_MIN },
@@ -189,6 +201,13 @@ for (const n of Object.values(NIVEAUX_PRATIQUE)) {
 export const VOL = {
   tauxChuteVoile: 5,     // m/s — taux de chute moyen sous voile ram-air
   vitesseChuteLibre: 55, // m/s (~200 km/h) — chute ventre stabilisée
+  // Vitesse propre de l'avion en axe de largage (≈ 80 kt, valeur typique
+  // Cessna 208 / Pilatus PC-6). Sert à estimer la vitesse sol en axe face
+  // au vent, donc le temps à laisser entre deux groupes.
+  vitesseAvionLargage: 150, // km/h
+  // Distance horizontale minimale visée entre deux groupes à l'ouverture
+  // (règle de pratique répandue : ~300 m / 1000 ft).
+  separationGroupes: 300,   // m
 };
 
 // Niveaux "au-dessus du sol" (AGL direct, pas de conversion nécessaire) —
@@ -245,6 +264,92 @@ export const SEUILS_COMMUNS = {
   // Écart de vent (km/h) au-delà duquel on parle d'évolution de la
   // prévision entre deux consultations (js/tendance.js).
   tendancePrevisionVent: 4,
+
+  // ---- Nouveaux paramètres (v2.0) ---------------------------------
+  // Couverture (%) à partir de laquelle un niveau de pression est
+  // considéré comme une COUCHE (≈ BKN, 5/8 = 62,5 %). C'est la base de la
+  // première couche qui fixe le plafond.
+  coucheMin: 60,
+  // Marge sous la base d'une couche : l'avion largue en air clair.
+  margeSousCouche: 150,     // m
+  // Si la couche oblige à larguer plus bas que ça, la journée est
+  // dégradée (chute très courte, tandem/AFF compromis).
+  largageReduitOrange: 3000, // m AGL
+  // Cisaillement bas : différence VECTORIELLE de vent entre 10 m et la
+  // basse couche (80-180 m), là où la voile finit son approche. Un
+  // gradient marqué fait « tomber » la voile en finale.
+  cisaillementOrange: 25,   // km/h
+  // Vent à l'altitude de largage : au-delà, le spot devient critique et la
+  // séparation entre groupes s'allonge fortement.
+  ventLargageOrange: 90,    // km/h
+  // Potentiel d'éclairs ICON (LPI, J/kg) : > 0 = activité électrique
+  // possible dans la maille, ≥ 1 = probable.
+  eclairsOrange: 0.01,
+  eclairsRouge: 1,
+  // Inhibition convective qui « verrouille » une CAPE élevée : au-delà, la
+  // convection a peu de chances de se déclencher → orange plutôt que rouge.
+  cinVerrou: 100,           // J/kg
+  liOrange: -3,             // indice de soulèvement (instabilité marquée)
+  // Froid à l'altitude de largage (température de l'air, hors refroidissement
+  // éolien de la chute) : info puis dégradant.
+  froidInfo: -5,            // °C
+  froidOrange: -15,         // °C
+  // Givrage avion : traversée d'une couche nuageuse entre 0 et -15 °C.
+  givrageTmax: 0,
+  givrageTmin: -15,
+  // Turbulence thermique sous voile : couche limite épaisse + instabilité.
+  thermiqueBLH: 1500,       // m
+  thermiqueCAPE: 150,       // J/kg
+};
+
+// ============================================================
+// PROBABILITÉ DE SAUT — vote pondéré multi-modèles + ensembles (v2.0)
+//
+// Une prévision unique ne dit pas si elle est sûre. On fait donc voter,
+// pour chaque heure, des modèles indépendants : chacun dit « sautable »
+// ou non sur les critères qu'il fournit (vent moyen ≤ légal, rafale ≤
+// seuil du niveau, pluie ≤ 0,2 mm/h, couche basse < 85 %). La proportion
+// pondérée de « oui » est la probabilité de saut affichée.
+//
+//  - Modèles haute résolution (2-2,5 km, ~48-72 h) : les plus fiables à
+//    courte échéance, sur le relief et le vent de surface.
+//  - Modèles globaux/régionaux : couvrent les 7 jours.
+//  - Ensembles (122 membres ICON-EPS + ECMWF-ENS + GEFS) : mesurent
+//    l'incertitude. Leur poids AUGMENTE avec l'échéance, parce qu'au-delà
+//    de J+2 c'est la dispersion qui compte plus qu'un run déterministe.
+// ============================================================
+export const MODELES = [
+  { id: "icon_d2",                     nom: "ICON-D2",       poids: 3, hr: true },
+  { id: "meteofrance_arome_france_hd", nom: "AROME HD",      poids: 3, hr: true },
+  { id: "knmi_harmonie_arome_europe",  nom: "HARMONIE KNMI", poids: 3, hr: true },
+  { id: "ecmwf_ifs025",                nom: "ECMWF IFS",     poids: 2 },
+  { id: "icon_eu",                     nom: "ICON-EU",       poids: 2 },
+  { id: "ukmo_seamless",               nom: "UKMO",          poids: 2 },
+  { id: "gfs_seamless",                nom: "GFS",           poids: 2 },
+];
+export const ENSEMBLES = [
+  { id: "icon_seamless", suffixe: "icon_seamless_eps",       nom: "ICON-EPS" },
+  { id: "ecmwf_ifs025",  suffixe: "ecmwf_ifs025_ensemble",   nom: "ECMWF-ENS" },
+  { id: "gfs025",        suffixe: "ncep_gefs025",            nom: "GEFS" },
+];
+export const PROBA = {
+  // Poids TOTAL des ensembles (réparti entre leurs membres), selon l'échéance.
+  poidsEnsembleBase: 6,
+  poidsEnsembleParJour: 2,  // au-delà de J+1
+  poidsEnsembleMax: 14,
+  vert: 0.7,    // ≥ 70 % → peut être vert
+  rouge: 0.35,  // < 35 % → rouge
+  nuagesBasBouche: 85, // % — critère « couche basse compacte » d'un membre
+};
+
+// Observation réelle la plus proche : METAR de Charleroi (EBCI, 22 km à
+// l'ouest, même plateau, 186 m). EBNM n'émet pas de METAR. Source : Iowa
+// Environmental Mesonet (archive mondiale des METAR, CORS ouvert, sans clé).
+export const METAR = {
+  station: "EBCI",
+  nom: "Charleroi",
+  distanceKm: 22,
+  ageMaxMin: 90, // au-delà, l'observation est trop vieille pour corriger l'heure en cours
 };
 
 // ============================================================
@@ -334,4 +439,4 @@ export const LIENS = {
   briefing: "https://pro.paraclubnamur.be/fr/meteo",
 };
 
-export const VERSION = "1.8.0";
+export const VERSION = "2.0.0";

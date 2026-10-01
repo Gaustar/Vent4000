@@ -4,6 +4,88 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [2.0.0] — 2026-10-01
+
+Refonte complète du moteur de décision et de l'interface. Objectif : la
+réponse la plus précise possible à « est-ce qu'on pourra sauter ? », en
+prenant en compte **tous** les paramètres météo qui comptent, et en disant
+**à quel point** la prévision est sûre.
+
+### Ajouté — probabilité de saut (`js/probabilite.js`)
+
+- **7 modèles déterministes** interrogés en une requête : ICON-D2, AROME
+  HD et HARMONIE KNMI (2-2,5 km, poids 3), ECMWF IFS, ICON-EU, UKMO et GFS
+  (poids 2). Avant : 3 modèles, comparés sur le seul écart de vent.
+- **122 scénarios d'ensemble** (ICON-EPS 40, ECMWF-ENS 51, GEFS 31). Chaque
+  ensemble pèse autant ; leur poids total croît avec l'échéance (6 → 14),
+  parce qu'à J+4 la dispersion compte plus qu'un run unique.
+- Chaque modèle ou membre **vote** sur vent moyen, rafales, pluie et couche
+  basse. La part pondérée des oui est la probabilité affichée, par heure et
+  par jour. Un vote garde visible le scénario minoritaire qu'une moyenne
+  écraserait.
+
+### Ajouté — tous les paramètres météo comme facteurs explicites (`js/facteurs.js`)
+
+Nouveaux paramètres lus et évalués : **gradient de vent en finale**
+(10 → 180 m), **vent au largage** et séparation entre groupes, **couches
+nuageuses sur 9 niveaux** (`js/nuages.js`), **brouillard** et code temps
+présent, **bruine/averses**, **potentiel d'éclairs** ICON, **CIN** (une CAPE
+forte verrouillée n'est plus un rouge), **indice de soulèvement**,
+**thermiques** (couche limite), **froid au largage**, **isotherme 0 °C** et
+**givrage avion**. Chaque facteur a sa valeur, son statut et son motif.
+
+### Ajouté — plafond analysé sur le profil vertical (`js/nuages.js`)
+
+- Couverture nuageuse lue sur 1000 → 600 hPa : base de la première couche
+  ≥ 60 % interpolée entre niveaux, altitude de **largage possible sous la
+  couche**. Une couche compacte n'est plus un rouge automatique : si sa base
+  reste au-dessus du minimum du niveau, on saute dessous (orange « largage
+  limité »).
+- Filtres contre les faux plafonds : niveaux sous 100 m ignorés (brume de
+  surface), couche rejetée si la couverture diagnostiquée par le modèle la
+  dément.
+- La formule T/Td historique ne sert plus que de repli.
+
+### Ajouté — observation réelle : METAR de Charleroi (`js/metar.js`)
+
+- EBCI (22 km, même plateau) via l'Iowa Environmental Mesonet (CORS ouvert).
+  Bandeau « Observé » sur l'accueil et la vue Jour, METAR brut consultable.
+- Pour l'heure en cours, l'observation **prime** : rafales, plafond,
+  visibilité ou orage observés hors seuil → rouge. Un plafond bas prévu mais
+  démenti par l'observation est ramené à orange (heure en cours et 2
+  suivantes). Constaté le jour même : 97 % de couche basse prévue, FEW035
+  observé.
+- Chargée à part : l'affichage n'attend jamais le serveur METAR.
+
+### Modifié — combinaison des verdicts (`js/scoring.js`)
+
+- Blocage ferme (plafond, visibilité, orage, observation) → rouge.
+- Blocage probabiliste (vent, rafales, pluie du modèle principal) → rouge
+  seulement si la probabilité est aussi < 35 %, sinon orange « arbitré ».
+- Plafond bas du seul modèle principal, démenti par la majorité des modèles
+  → orange arbitré.
+- Probabilité < 35 % → rouge ; 35-70 % → orange ; ≥ 70 % sans facteur limite → vert.
+- Supprimé : `niveauConfiance` (écart de vent en km/h + pénalité d'échéance),
+  remplacé par la netteté du consensus ; le relevé « current » d'Open-Meteo
+  (un modèle, pas une mesure), remplacé par le METAR.
+
+### Modifié — interface
+
+- Accueil : cartes jour avec probabilité, verdict, fenêtre, motif et
+  **bande horaire** (couleur = verdict, hauteur = probabilité).
+- Vue Jour : **tableau horaire** paramètre × heure coloré par statut,
+  détail de tous les facteurs, **consensus des modèles** (vote de chacun),
+  **profil vertical** avec couverture nuageuse par niveau, spot avec
+  séparation entre groupes.
+- Réglages : explication de la méthode ; cadre réglementaire mis à jour
+  (le texte disait encore le RSB FWCP « non consulté »).
+
+### Tests
+
+128 tests (`npm test`), dont 26 nouveaux dans `js/moteur.test.mjs` (METAR,
+nuages, vote, facteurs, arbitrages). Les tests de confiance par écart de
+vent sont retirés avec la fonction.
+
 ## [1.8.0] — 2026-09-23
 
 ### Ajouté — prix du carburant officiel et quotidien (`js/carburant.js`)
