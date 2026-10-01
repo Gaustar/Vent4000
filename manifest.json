@@ -1,7 +1,7 @@
 {
   "name": "Vent4000 — Météo parachutisme Paraclub de Namur",
   "short_name": "Vent4000",
-  "description": "Ça vaut le déplacement ? Verdict météo par jour d'ouverture au Paraclub de Namur, seuils CIR/GDF-05 et RSB FWCP, vents du sol à 4000 m.",
+  "description": "Ça vaut le déplacement ? Verdict par jour d'ouverture au Paraclub de Namur : règles CIR/GDF-05 et RSB FWCP par brevet, TAF et METAR de Charleroi, modèles 1,3-2,2 km.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

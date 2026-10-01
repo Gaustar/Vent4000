@@ -1,10 +1,10 @@
 // ============================================================
 // Vent4000 — Service worker
-// Shell applicatif : cache-first. API météo (Open-Meteo, IEM) : network-first
+// Shell applicatif : cache-first. API météo (Open-Meteo, MET Norway) : network-first
 // avec repli sur la dernière prévision en cache (mode hors-ligne).
 // ============================================================
 
-const CACHE = "vent4000-v18";
+const CACHE = "vent4000-v19";
 const SHELL = [
   "./",
   "./index.html",
@@ -13,14 +13,11 @@ const SHELL = [
   "./js/config.js",
   "./js/carburant.js",
   "./js/deplacement.js",
-  "./js/facteurs.js",
   "./js/meteo.js",
   "./js/metar.js",
-  "./js/nuages.js",
   "./js/ouverture.js",
-  "./js/probabilite.js",
+  "./js/regles.js",
   "./js/scoring.js",
-  "./js/spot.js",
   "./js/tendance.js",
   "./manifest.json",
   "./icons/icon-192.png",
@@ -53,8 +50,8 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
 
-  // API météo (prévisions, ensembles, METAR) : réseau d'abord, cache en secours
-  if (["api.open-meteo.com", "ensemble-api.open-meteo.com", "mesonet.agron.iastate.edu"].includes(url.hostname)) {
+  // API météo (prévisions, METAR, TAF) : réseau d'abord, cache en secours
+  if (["api.open-meteo.com", "api.met.no"].includes(url.hostname)) {
     e.respondWith(
       fetch(e.request)
         .then((rep) => {

@@ -1,120 +1,150 @@
 // ============================================================
-// Vent4000 — Moteur de verdict « ça saute ? » (v2.0)
-// Module 100 % pur (aucune dépendance DOM ni fetch).
+// Vent4000 — Verdict « ça saute ? » (v2.1)
+// Module pur (aucune dépendance DOM ni réseau).
 //
-// Une heure est jugée en deux temps :
-//  1. FACTEURS (facteurs.js) — chaque paramètre météo du modèle principal,
-//     plus l'observation METAR pour l'heure en cours : bloquant / limite.
-//  2. PROBABILITÉ (probabilite.js) — vote de 7 modèles et 122 membres
-//     d'ensemble sur les critères décisifs (vent, rafales, pluie, couche
-//     basse).
+// Pour chaque heure, les sources sont prises de la plus précise à la
+// moins précise, sans pondération ni estimation :
 //
-// Règles de combinaison :
-//  - un facteur bloquant FERME (plafond, visibilité, orage, observation…)
-//    → rouge, quoi que disent les votes ;
-//  - un facteur bloquant PROBABILISTE (vent, rafales, pluie du modèle
-//    principal) → rouge seulement si la probabilité est aussi sous le seuil
-//    rouge ; sinon il devient « limite » : le modèle principal est un vote
-//    parmi d'autres, pas un oracle ;
-//  - probabilité < 35 % → rouge ; < 70 % ou facteur limite → orange ;
-//  - sinon vert.
+//  1. OBSERVATION (METAR Charleroi, heure en cours, < 90 min) : un fait.
+//     Pour toute règle qu'il renseigne, il tranche seul.
+//  2. TAF Charleroi (prévision officielle) + modèles 1,3-2,2 km : chaque
+//     source est une voix. Au-delà de la portée des modèles 2 km (≈ J+2),
+//     les modèles régionaux (7-10 km) prennent le relais — et l'heure est
+//     marquée « précision régionale ».
+//
+// Pour chaque règle (regles.js) :
+//  - aucune source en échec            → respectée
+//  - plus de la moitié des sources en échec → violée
+//  - la moitié ou moins en échec       → incertaine (sources divergentes)
+//  - aucune source ne renseigne la règle → non vérifiable
+// Les variations TEMPO / PROB du TAF en échec rendent la règle incertaine.
+//
+// Verdict de l'heure :
+//  - une règle violée                                 → rouge
+//  - une règle incertaine, non vérifiable, ou « limite » → orange
+//  - sinon                                            → vert
 // ============================================================
 
-import { DZ, PROBA, METAR } from "./config.js";
-import { evaluerFacteurs } from "./facteurs.js";
-import { probabiliteSaut, critereLimitant, accordCoucheBasse } from "./probabilite.js";
-import { ageMetar } from "./metar.js";
-export { plafondEstime } from "./nuages.js";
+import { DZ, MODELES, AERODROME } from "./config.js";
+import { REGLES, evaluerSource, conditionsModele, conditionsAero } from "./regles.js";
+import { ageMetar, conditionsTaf } from "./metar.js";
 
-const LIBELLE_CRITERE = { vent: "vent moyen", rafales: "rafales", pluie: "pluie", nuages: "couche basse" };
+// Règles dont l'absence de donnée empêche de conclure au vert : ce sont
+// les conditions légales. Pluie, orage et ouverture n'ont pas de donnée
+// manquante bloquante (les modèles les renseignent toujours).
+const REGLES_OBLIGATOIRES = new Set(["ventLegal", "ventNiveau", "rafales", "plafond", "visibilite"]);
 
 /**
- * Score d'une heure.
- * @param {object} h — heure normalisée (cf. meteo.js) + `ventPrecedent`,
- *   `metar` (heure en cours) optionnels
- * @param {object} seuils — { ventMax, plafondMin, ecartRafalesOrange, hauteurOuverture, eleve? }
- * @param {{echeanceJours?:number}} [ctx]
- * @returns {{verdict, raisons:string[], facteurs, proba, chance:number|null, plafond:number, nuages}}
- *   `chance` = probabilité de saut affichable (0 si un facteur ferme bloque).
+ * Sources disponibles pour une heure.
+ * @returns {Array<{id, nom, type:"obs"|"taf"|"modele", hr?:boolean, resultats, conditions}>}
  */
-export function scoreHeure(h, seuils, ctx = {}) {
-  const facteurs = evaluerFacteurs(h, seuils);
-  const nuages = facteurs.nuages;
-  const proba = probabiliteSaut(h, seuils, ctx.echeanceJours ?? h.echeanceJours ?? 0);
+export function sourcesHeure(h, seuils, aero = {}) {
+  const sources = [];
+  const { metar, taf, maintenant = new Date() } = aero;
 
-  // Arbitrage des blocages probabilistes par le vote.
-  if (proba && proba.p >= PROBA.rouge) {
-    for (const x of facteurs) {
-      if (x.statut === "bloquant" && x.probabiliste) {
-        x.statut = "limite";
-        x.arbitre = true;
-        x.motif = `${x.motif} selon le modèle principal — ${Math.round(proba.p * 100)} % des modèles favorables`;
-      }
-    }
+  // Observation : seulement pour l'heure qui contient « maintenant ».
+  if (metar && ageMetar(metar, maintenant) <= AERODROME.metarAgeMaxMin &&
+      maintenant.getTime() >= h.utc && maintenant.getTime() < h.utc + 3600000) {
+    const c = conditionsAero(metar);
+    sources.push({ id: "metar", nom: `Observé ${AERODROME.nom}`, type: "obs", conditions: c, resultats: evaluerSource(c, seuils) });
   }
 
-  // Arbitrage du plafond. Un plafond bas n'est retenu comme bloquant que
-  // s'il est corroboré : par la majorité des modèles (couche basse), et
-  // pas démenti par l'observation réelle de Charleroi dans les 2 heures
-  // (la persistance d'une observation bat la prévision à très court terme).
-  const plafond = facteurs.find((x) => x.id === "plafond");
-  if (plafond?.statut === "bloquant") {
-    const accord = accordCoucheBasse(h);
-    const m = h.metar;
-    const obsFraiche = m && ageMetar(m, h.maintenant ?? new Date()) <= METAR.ageMaxMin + 60 * (h.metarDecalage ?? 0);
-    if (obsFraiche && m.plafond >= seuils.plafondMin && (m.visibilite ?? 10000) >= 5000 && (h.metarDecalage ?? 0) <= 2) {
-      plafond.statut = "limite";
-      plafond.arbitre = true;
-      plafond.motif = `${plafond.motif} prévu, mais ${METAR.nom} n'observe ${m.plafond === Infinity ? "aucun plafond" : `qu'un plafond à ${Math.round(m.plafond)} m`}`;
-    } else if (accord && accord.n >= 3 && accord.part < 0.5 && nuages.plafond < 2000) {
-      plafond.statut = "limite";
-      plafond.arbitre = true;
-      plafond.motif = `${plafond.motif} selon le modèle principal — couche basse prévue par ${Math.round(accord.part * 100)} % des modèles`;
-    }
+  // TAF : conditions prévues + variations temporaires.
+  const ct = conditionsTaf(taf, h.utc, h.utc + 3600000);
+  if (ct) {
+    const c = conditionsAero(ct.principal);
+    const variantes = ct.variantes.map((v) => {
+      const cv = conditionsAero(v.cond);
+      return { libelle: v.libelle, conditions: cv, resultats: evaluerSource(cv, seuils) };
+    });
+    sources.push({ id: "taf", nom: `TAF ${AERODROME.nom}`, type: "taf", conditions: c, resultats: evaluerSource(c, seuils), variantes });
   }
 
-  const bloquants = facteurs.filter((x) => x.statut === "bloquant");
-  const limites = facteurs.filter((x) => x.statut === "limite");
-  const pct = proba ? Math.round(proba.p * 100) : null;
-  const critere = LIBELLE_CRITERE[critereLimitant(proba)];
-  const raisonProba = proba
-    ? `Probabilité de saut ${pct} %${critere ? ` — en cause : ${critere}` : ""}`
-    : null;
-
-  let verdict;
-  let raisons;
-  if (bloquants.length) {
-    verdict = "rouge";
-    raisons = bloquants.map((x) => x.motif);
-  } else if (proba && proba.p < PROBA.rouge) {
-    verdict = "rouge";
-    raisons = [raisonProba, ...limites.map((x) => x.motif)];
-  } else if (limites.length || (proba && proba.p < PROBA.vert)) {
-    verdict = "orange";
-    raisons = [...limites.map((x) => x.motif)];
-    if (proba && proba.p < PROBA.vert) raisons.unshift(raisonProba);
-  } else {
-    verdict = "vert";
-    raisons = [];
+  // Modèles : les plus fins disponibles à cette heure.
+  const dispo = MODELES.filter((m) => h.modeles?.[m.id]);
+  const hr = dispo.filter((m) => m.hr);
+  const retenus = hr.length ? hr : dispo;
+  for (const m of retenus) {
+    const c = conditionsModele(h.modeles[m.id], !!m.base);
+    sources.push({ id: m.id, nom: m.nom, maille: m.maille, type: "modele", hr: !!m.hr, conditions: c, resultats: evaluerSource(c, seuils) });
   }
-
-  const fermeBloque = bloquants.some((x) => !x.probabiliste);
-  const chance = proba ? (fermeBloque ? 0 : proba.p) : null;
-  return { verdict, raisons, facteurs, proba, chance, plafond: nuages.plafond, nuages };
+  return sources;
 }
 
 /**
- * Composante de vent traversier (crosswind) par rapport à l'axe de piste.
- *
- * Volontairement PURE INFO — n'intervient pas dans le verdict. Contrairement
- * à un avion, un parachutiste sous voile choisit son axe d'atterrissage en
- * fonction de la manche à air et non de l'axe de piste : un atterrissage
- * "travers" bien négocié (flare symétrique et franc) n'est pas plus
- * dangereux qu'un atterrissage face au vent (cf. Skydivemag "Crosswind
- * Landings" / "Landing Priorities" — la technique prime sur l'axe).
- * Affiché ici pour la lecture du terrain (place de l'axe piste vs vent) et
- * pour aider les pilotes largueurs, pas comme seuil personnel du sauteur.
- * @returns {{traversier:number, face:number}} en km/h (valeurs absolues)
+ * @param {object} h — heure normalisée (meteo.js)
+ * @param {object} seuils — { ventMax, plafondMin, hauteurOuverture, label }
+ * @param {{metar?, taf?, maintenant?}} aero
+ * @returns {{verdict, raisons:string[], regles:Array, sources:Array, precision:"obs"|"hr"|"regional"|"aucune", accord:{favorables:number, total:number}}}
+ */
+export function scoreHeure(h, seuils, aero = {}) {
+  const sources = sourcesHeure(h, seuils, aero);
+  const obs = sources.find((s) => s.type === "obs");
+  const voix = sources.filter((s) => s.type !== "obs");
+  const regles = [];
+
+  for (const regle of REGLES) {
+    const decision = { ...regle, statut: "ok", detail: "", echecs: 0, total: 0 };
+
+    // L'observation ne remplace la prévision que pour ce qu'elle mesure.
+    const resObs = obs?.resultats[regle.id];
+    if (resObs && resObs.statut !== "inconnu") {
+      decision.statut = resObs.statut === "echec" ? "violee" : resObs.statut === "limite" ? "limite" : "ok";
+      decision.detail = `${obs.nom} : ${resObs.detail}`;
+      decision.total = 1;
+      decision.echecs = resObs.statut === "echec" ? 1 : 0;
+      decision.parObservation = true;
+      regles.push(decision);
+      continue;
+    }
+
+    const avis = voix.map((s) => ({ s, res: s.resultats[regle.id] })).filter((x) => x.res && x.res.statut !== "inconnu");
+    if (!avis.length && !voix.some((s) => s.resultats[regle.id])) continue; // règle non applicable
+    decision.total = avis.length;
+    decision.echecs = avis.filter((x) => x.res.statut === "echec").length;
+    const limites = avis.filter((x) => x.res.statut === "limite");
+    const tafVar = voix.find((s) => s.type === "taf")?.variantes ?? [];
+    const varEchec = tafVar.filter((v) => v.resultats[regle.id]?.statut === "echec" || v.resultats[regle.id]?.statut === "limite");
+
+    if (!avis.length) {
+      decision.statut = REGLES_OBLIGATOIRES.has(regle.id) ? "nonVerifiable" : "ok";
+      decision.detail = "aucune source précise ne fournit cette donnée";
+    } else if (decision.echecs * 2 > decision.total) {
+      decision.statut = "violee";
+    } else if (decision.echecs > 0 || varEchec.length) {
+      decision.statut = "incertaine";
+    } else if (limites.length) {
+      decision.statut = "limite";
+    }
+    if (avis.length) {
+      const enEchec = avis.filter((x) => x.res.statut !== "ok");
+      const ex = enEchec[0] ?? avis[0];
+      decision.detail = decision.statut === "ok"
+        ? `${avis.length}/${avis.length} sources conformes`
+        : `${decision.echecs}/${decision.total} sources en échec — ${ex.s.nom} : ${ex.res.detail}`;
+      if (varEchec.length) decision.detail += ` · TAF : ${varEchec.map((v) => v.libelle).join(" ; ")}`;
+    }
+    regles.push(decision);
+  }
+
+  const violees = regles.filter((x) => x.statut === "violee");
+  const douteuses = regles.filter((x) => x.statut === "incertaine" || x.statut === "nonVerifiable" || x.statut === "limite");
+  const verdict = violees.length ? "rouge" : douteuses.length ? "orange" : "vert";
+  const raisons = (violees.length ? violees : douteuses).map((x) => `${x.label} — ${x.detail}`);
+
+  // Accord global : sources dont TOUTES les règles sont respectées.
+  const evaluees = obs ? [obs] : voix;
+  const favorables = evaluees.filter((s) => Object.values(s.resultats).every((res) => res.statut === "ok" || res.statut === "inconnu")).length;
+
+  const precision = obs ? "obs"
+    : voix.some((s) => s.type === "taf" || s.hr) ? "hr"
+    : voix.length ? "regional" : "aucune";
+  return { verdict, raisons, regles, sources, precision, accord: { favorables, total: evaluees.length } };
+}
+
+/**
+ * Composante de vent traversier par rapport à l'axe de piste (information).
+ * @returns {{traversier:number, face:number}} km/h
  */
 export function ventPiste(vitesse, direction, qfu = DZ.qfu) {
   const delta = ((direction - qfu) * Math.PI) / 180;
@@ -127,23 +157,11 @@ export function ventPiste(vitesse, direction, qfu = DZ.qfu) {
 /**
  * Meilleure fenêtre sautable d'un créneau : la plus longue plage d'heures
  * consécutives (≥ 2 h) tenable, en privilégiant une plage entièrement verte.
- *
- * Une heure `h` couvre la tranche [h, h+1[ : une plage 10h→12h (heures 10,
- * 11 et 12) se lit donc « 10h → 13h ».
- *
- * @param {Array<{heure:number, verdict:string}>} heures — dans l'ordre chronologique
- * @returns {{verdict:string, debut:number|null, fin:number|null, duree:number}}
+ * Une heure `h` couvre [h, h+1[ : la plage 10h-12h se lit « 10h → 13h ».
  */
 export function fenetreSautable(heures) {
   if (!heures?.length) return { verdict: "rouge", debut: null, fin: null, duree: 0 };
-  // Une heure isolée ne fait pas une fenêtre : la règle « 2 h consécutives »
-  // s'applique aussi quand le créneau ne contient qu'une heure (fin de
-  // journée, créneau du vendredi tronqué par le coucher du soleil). Avant
-  // la v1.5.0 ce cas retournait le verdict de l'heure : un créneau réduit
-  // à une heure verte sortait VERT, alors que la même heure verte au
-  // milieu d'un créneau plus long sortait rouge.
 
-  /** Plus longue plage d'heures consécutives dont le verdict passe le test. */
   function plusLonguePlage(test) {
     let meilleure = null;
     let debut = null;
@@ -172,26 +190,11 @@ export function fenetreSautable(heures) {
   return { verdict: "rouge", debut: null, fin: null, duree: 0 };
 }
 
-/**
- * Score d'un créneau = verdict de sa meilleure fenêtre sautable.
- *  - 2 h vertes consécutives           → vert
- *  - 2 h sautables (vert/orange) cons. → orange
- *  - sinon                             → rouge
- * @param {string[]} verdictsHoraires — verdicts des heures du créneau, dans l'ordre
- */
 export function scoreCreneau(verdictsHoraires) {
-  return fenetreSautable(
-    verdictsHoraires.map((verdict, i) => ({ heure: i, verdict }))
-  ).verdict;
+  return fenetreSautable(verdictsHoraires.map((verdict, i) => ({ heure: i, verdict }))).verdict;
 }
 
-/**
- * MEILLEUR des verdicts fournis (vert dès qu'un créneau est vert) : c'est
- * le badge du jour, qui répond à « est-ce qu'il y a un créneau sautable
- * quelque part dans la journée ? ». À ne pas confondre avec une agrégation
- * pessimiste — le commentaire d'origine disait « pire des deux », ce que
- * la fonction n'a jamais fait.
- */
+/** Meilleur des verdicts : « y a-t-il un créneau sautable dans la journée ? » */
 export function meilleurVerdict(verdicts) {
   if (verdicts.includes("vert")) return "vert";
   if (verdicts.includes("orange")) return "orange";

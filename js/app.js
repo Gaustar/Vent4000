@@ -1,18 +1,15 @@
 // ============================================================
-// Vent4000 — Application (UI) v2.0
+// Vent4000 — Application (UI) v2.1
 // ============================================================
 
-import { DZ, NIVEAUX_AGL, NIVEAUX_PRATIQUE, VOL, LIENS, VERSION, LEGAL_BE, METAR, MODELES, ENSEMBLES } from "./config.js";
+import { DZ, NIVEAUX_PRATIQUE, LIENS, VERSION, LEGAL_BE, AERODROME, MODELES } from "./config.js";
 import { statutOuverture } from "./ouverture.js";
 import { scoreHeure, fenetreSautable, meilleurVerdict, ventPiste } from "./scoring.js";
-import { confianceProba } from "./probabilite.js";
-import { separationGroupes } from "./facteurs.js";
-import { estimerSpot } from "./spot.js";
 import { ageMetar } from "./metar.js";
 import { comparerPrevisions, doitRemplacerInstantane } from "./tendance.js";
 import { conseilDeplacement } from "./deplacement.js";
 import { prixDiesel } from "./carburant.js";
-import { chargerMeteo, chargerMetar } from "./meteo.js";
+import { chargerMeteo, chargerAero, NIVEAUX_PROFIL, NIVEAUX_AGL } from "./meteo.js";
 
 // ------------------------------------------------------------
 // État & réglages
@@ -22,6 +19,7 @@ const CLE_INSTANTANES = "vent4000.instantanes";
 
 const etat = {
   meteo: null,
+  aero: { metar: null, taf: null },
   jourSelectionne: null,
   heureSelectionnee: null,
   reglages: chargerReglages(),
@@ -30,9 +28,11 @@ const etat = {
 };
 
 function chargerReglages() {
-  const defauts = { niveau: "tandem", ventMax: null, plafondMin: null };
+  const defauts = { niveau: "tandem", ventMax: null };
   try {
-    return { ...defauts, ...JSON.parse(localStorage.getItem(CLE_REGLAGES) || "{}") };
+    const lu = { ...defauts, ...JSON.parse(localStorage.getItem(CLE_REGLAGES) || "{}") };
+    if (!NIVEAUX_PRATIQUE[lu.niveau]) lu.niveau = "tandem";
+    return lu;
   } catch {
     return defauts;
   }
@@ -55,20 +55,20 @@ function sauverInstantanes() {
 }
 
 /**
- * Seuils effectifs = préréglage du niveau + overrides, bornés au droit
- * belge. Le bornage est refait ici (et pas seulement à la saisie) parce
- * qu'un réglage enregistré par une ancienne version peut encore traîner
- * dans le localStorage.
+ * Seuils effectifs : ceux du règlement pour le niveau choisi. Le seul
+ * réglage personnel possible est un vent max PLUS STRICT (le RSB autorise
+ * le RT à durcir, jamais à assouplir) : il est borné ici au palier du brevet.
  */
 function seuilsActifs() {
   const base = NIVEAUX_PRATIQUE[etat.reglages.niveau] ?? NIVEAUX_PRATIQUE.tandem;
+  const perso = etat.reglages.ventMax;
   return {
     label: base.label,
-    ventMax: Math.min(etat.reglages.ventMax ?? base.ventMax, LEGAL_BE.ventMoyenMaxSol),
-    plafondMin: Math.max(etat.reglages.plafondMin ?? base.plafondMin, LEGAL_BE.plafondMinAGL),
-    ecartRafalesOrange: base.ecartRafalesOrange,
+    ventMax: perso != null ? Math.min(perso, base.ventMax) : base.ventMax,
+    ventMaxReglement: base.ventMax,
+    plafondMin: base.plafondMin,
     hauteurOuverture: base.hauteurOuverture,
-    eleve: !!base.eleve,
+    sourceOuverture: base.sourceOuverture,
   };
 }
 
@@ -79,13 +79,18 @@ const $ = (sel) => document.querySelector(sel);
 const r = Math.round;
 
 const JOURS_FR = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
-const JOURS_COURT = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
 const MOIS_FR = ["janv.", "févr.", "mars", "avril", "mai", "juin",
                  "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 
 const VERDICT_TEXTE = { vert: "Ça saute", orange: "Ça passe juste", rouge: "Ça ne saute pas" };
-// Forme redondante avec la couleur (daltonisme rouge-vert, ~8 % des hommes).
+// Forme redondante avec la couleur (daltonisme rouge-vert).
 const VERDICT_SYMBOLE = { vert: "●", orange: "▲", rouge: "✕" };
+const PRECISION_TEXTE = {
+  obs: "observation",
+  hr: "modèles 1,3-2,2 km",
+  regional: "modèles régionaux 7-10 km",
+  aucune: "aucune donnée",
+};
 
 function echapper(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -104,8 +109,6 @@ function heureDecimale(iso) {
   return parseInt(iso.slice(11, 13), 10) + parseInt(iso.slice(14, 16), 10) / 60;
 }
 
-// Les prévisions sont ancrées sur Europe/Brussels : « maintenant » est
-// calculé dans ce fuseau, quel que soit celui de l'appareil.
 const FMT_BRUXELLES = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Europe/Brussels",
   year: "numeric", month: "2-digit", day: "2-digit",
@@ -125,6 +128,9 @@ function todayIso() {
 function heureBruxelles(date) {
   return date.toLocaleTimeString("fr-BE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Brussels" });
 }
+function jourHeureBruxelles(date) {
+  return date.toLocaleString("fr-BE", { weekday: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Brussels" });
+}
 
 const CARDINAUX = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSO","SO","OSO","O","ONO","NO","NNO"];
 function cardinal(deg) {
@@ -132,10 +138,7 @@ function cardinal(deg) {
   return CARDINAUX[Math.round(deg / 22.5) % 16];
 }
 
-/**
- * Rotation du glyphe « ➤ » (qui pointe vers l'EST à 0°) pour qu'il montre
- * où VA le vent : direction météo + 180° − 90°.
- */
+/** « ➤ » pointe vers l'EST à 0° : pour montrer où VA le vent, direction + 90°. */
 function rotationFleche(direction) {
   return (direction ?? 0) + 90;
 }
@@ -147,41 +150,43 @@ function texteFenetre(f) {
 
 function formatDistance(m) {
   if (m === Infinity) return "∞";
-  return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${r(m)} m`;
+  return m >= 1000 ? `${(m / 1000).toFixed(1).replace(".0", "")} km` : `${r(m)} m`;
 }
 
-function pct(p) {
-  return p == null ? "—" : `${r(p * 100)}`;
+function court(m) {
+  if (m == null) return "—";
+  if (m === Infinity) return "∞";
+  if (m >= 10000) return `${r(m / 1000)}k`;
+  return m >= 1000 ? `${(m / 1000).toFixed(1).replace(".0", "")}k` : `${r(m)}`;
 }
 
-function classeProba(p) {
-  if (p == null) return "c-na";
-  if (p >= 0.7) return "c-ok";
-  if (p >= 0.35) return "c-limite";
-  return "c-bloquant";
+/** Plage « min–max » (ou valeur unique) d'une liste de nombres. */
+function plage(valeurs, f = (x) => `${r(x)}`) {
+  const v = valeurs.filter((x) => x != null && Number.isFinite(x));
+  if (!v.length) return null;
+  const min = Math.min(...v);
+  const max = Math.max(...v);
+  return f(min) === f(max) ? f(min) : `${f(min)}–${f(max)}`;
 }
 
-function moyenne(valeurs) {
-  const v = valeurs.filter((x) => x != null);
-  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
-}
+const CLASSE_STATUT = { ok: "c-ok", violee: "c-bloquant", incertaine: "c-limite", nonVerifiable: "c-limite", limite: "c-limite" };
+const LIBELLE_STATUT = { ok: "respectée", violee: "non respectée", incertaine: "sources divergentes", nonVerifiable: "non vérifiable", limite: "à apprécier" };
 
-function statCell(label, valeur, unite = "") {
-  return `<div class="stat">
-    <span class="stat-label">${label}</span>
-    <span class="stat-valeur">${valeur}${unite ? `<small>${unite}</small>` : ""}</span>
-  </div>`;
+/** Sources sur lesquelles s'appuient les valeurs affichées d'une heure. */
+function sourcesAffichees(score) {
+  const obs = score.sources.find((s) => s.type === "obs");
+  return obs ? [obs] : score.sources;
 }
 
 // ------------------------------------------------------------
-// Calcul des jours d'ouverture scorés
+// Calcul des jours d'ouverture
 // ------------------------------------------------------------
 let memoJours = { cle: null, valeur: null };
 
 function joursOuvertsScores() {
   const seuils = seuilsActifs();
-  const cle = [etat.meteo?.recupereLe, etat.meteo?.metar?.brut, seuils.label, seuils.ventMax, seuils.plafondMin,
-               seuils.hauteurOuverture, todayIso(), Math.floor(heureCourante())].join("|");
+  const cle = [etat.meteo?.recupereLe, etat.aero.metar?.brut, etat.aero.taf?.brut, seuils.label, seuils.ventMax,
+               todayIso(), Math.floor(heureCourante())].join("|");
   if (memoJours.cle === cle) return memoJours.valeur;
   const valeur = calculerJoursOuverts(seuils);
   memoJours = { cle, valeur };
@@ -190,10 +195,9 @@ function joursOuvertsScores() {
 
 function calculerJoursOuverts(seuils) {
   const resultat = [];
-  const maintenant = heureCourante();
-  const heureNow = Math.floor(maintenant);
+  const heureNow = Math.floor(heureCourante());
   const aujourdhui = todayIso();
-  const metar = etat.meteo.metar;
+  const aero = { ...etat.aero, maintenant: new Date() };
 
   etat.meteo.jours.forEach((jour, index) => {
     const date = dateLocale(jour.date);
@@ -202,25 +206,13 @@ function calculerJoursOuverts(seuils) {
 
     const estAujourdhui = jour.date === aujourdhui;
     const coucher = heureDecimale(jour.sunset);
-    const ventParHeure = new Map(jour.heures.map((h) => [h.heure, h.vent10]));
 
     let creneaux = ouverture.creneaux.map((c) => {
       const fin = c.fin ?? coucher;
       const heures = jour.heures
         .filter((h) => h.heure + 1 > c.debut && h.heure < fin)
         .filter((h) => !estAujourdhui || h.heure >= heureNow)
-        .map((h) => {
-          // L'observation de Charleroi est confiée à l'heure en cours et aux
-          // deux suivantes (persistance), avec son décalage.
-          const decalage = estAujourdhui ? h.heure - heureNow : null;
-          const avecObs = metar && decalage != null && decalage <= 2;
-          const enrichie = {
-            ...h,
-            ventPrecedent: ventParHeure.get(h.heure - 1),
-            ...(avecObs ? { metar, metarDecalage: decalage } : {}),
-          };
-          return { h, score: scoreHeure(enrichie, seuils, { echeanceJours: index }) };
-        });
+        .map((h) => ({ h, score: scoreHeure(h, seuils, aero) }));
       return {
         ...c,
         heures,
@@ -241,12 +233,18 @@ function calculerJoursOuverts(seuils) {
     const heuresFenetre = meilleureFenetre?.debut != null
       ? toutes.filter((x) => x.h.heure >= meilleureFenetre.debut && x.h.heure < meilleureFenetre.fin)
       : [];
-    // Probabilité du jour = moyenne sur la meilleure fenêtre ; sans fenêtre,
-    // la meilleure heure (pour montrer « à quel point » c'est raté).
-    const chance = heuresFenetre.length
-      ? moyenne(heuresFenetre.map((x) => x.score.chance))
-      : (toutes.length ? Math.max(...toutes.map((x) => x.score.chance ?? 0)) : null);
-    const pFenetre = moyenne(heuresFenetre.map((x) => x.score.proba?.p ?? null));
+
+    // Accord sur la fenêtre : la PIRE heure (le nombre de sources qui
+    // valident TOUTE la fenêtre, pas une moyenne).
+    const accordFenetre = heuresFenetre.length
+      ? heuresFenetre.map((x) => x.score.accord)
+          // Pire ratio d'abord ; à ratio égal, l'heure la moins documentée.
+          .sort((a, b) => (a.favorables / (a.total || 1) - b.favorables / (b.total || 1)) || (a.total - b.total))[0]
+      : null;
+    const precisions = new Set(toutes.map((x) => x.score.precision));
+    const precision = precisions.has("regional") && !precisions.has("hr") && !precisions.has("obs") ? "regional"
+      : precisions.has("regional") ? "mixte" : "hr";
+    const unanime = heuresFenetre.length > 0 && heuresFenetre.every((x) => x.score.accord.favorables === x.score.accord.total);
 
     resultat.push({
       index,
@@ -256,11 +254,11 @@ function calculerJoursOuverts(seuils) {
       creneaux,
       verdictJour,
       meilleureFenetre,
-      chance,
-      confiance: pFenetre == null ? "unique" : confianceProba({ p: pFenetre }),
+      accordFenetre,
+      precision,
+      confiance: !unanime ? "faible" : precision === "hr" ? "haute" : "moyenne",
       motif: motifDominant(toutes, verdictJour),
       tendance: tendanceDuJour(jour.date, verdictJour, toutes),
-      lointain: index >= 5,
       sunset: jour.sunset,
       heures: toutes,
     });
@@ -269,53 +267,15 @@ function calculerJoursOuverts(seuils) {
   return resultat;
 }
 
-/**
- * Regroupe les raisons horaires (qui contiennent des chiffres) en motifs
- * stables, affichables au niveau du jour.
- */
-const MOTIFS = [
-  [/hors limite légale/,       "Hors limite légale (vent)"],
-  [/Plafond .*légal/,          "Plafond sous le minimum légal"],
-  [/Visibilité .*légal/,       "Visibilité sous le minimum légal"],
-  [/^Probabilité de saut .*rafales/, "Rafales probables"],
-  [/^Probabilité de saut .*vent/,    "Vent probable"],
-  [/^Probabilité de saut .*pluie/,   "Pluie probable"],
-  [/^Probabilité de saut .*couche/,  "Couche basse probable"],
-  [/^Probabilité de saut/,     "Modèles partagés"],
-  [/^Charleroi|observ/,        "Observation défavorable"],
-  [/^Rafales .*seuil/,         "Rafales au-dessus du seuil"],
-  [/^Rafales \+/,              "Rafales marquées"],
-  [/^Vent \d.*largage/,        "Vent fort au largage"],
-  [/^Vent \d.*ouverture/,      "Vent fort à l'ouverture"],
-  [/^Vent \d/,                 "Vent trop fort"],
-  [/^Vent proche/,             "Vent proche du seuil"],
-  [/^Vent en hausse/,          "Vent en hausse rapide"],
-  [/^Gradient/,                "Gradient de vent en finale"],
-  [/^Couche à .*largage limité/, "Largage limité par une couche"],
-  [/^Plafond/,                 "Plafond trop bas"],
-  [/^Brouillard|brouillard/,   "Brouillard"],
-  [/^Visibilité/,              "Visibilité réduite"],
-  [/^Risque de pluie/,         "Risque de pluie"],
-  [/^Bruine|^Pluie|^Averses|^Neige/, "Précipitations"],
-  [/^Orage|éclairs|électrique/, "Risque orageux"],
-  [/^Risque orageux/,          "Risque orageux"],
-  [/^Instabilité/,             "Instabilité (CAPE)"],
-  [/^Givrage/,                 "Givrage possible"],
-  [/^Froid/,                   "Froid au largage"],
-  [/^Air thermique/,           "Thermiques"],
-];
-
-function motifRaison(raison) {
-  return MOTIFS.find(([re]) => re.test(raison))?.[1] ?? raison;
-}
-
+/** Motif du jour : la règle la plus souvent en cause sur les heures du verdict. */
 function motifDominant(heuresScorees, verdict) {
   if (verdict === "vert") return null;
   const compte = new Map();
   for (const { score } of heuresScorees) {
     if (score.verdict !== verdict) continue;
-    for (const raison of score.raisons) {
-      const motif = motifRaison(raison);
+    for (const regle of score.regles) {
+      if (regle.statut === "ok") continue;
+      const motif = `${regle.label} — ${LIBELLE_STATUT[regle.statut]}`;
       compte.set(motif, (compte.get(motif) ?? 0) + 1);
     }
   }
@@ -323,24 +283,24 @@ function motifDominant(heuresScorees, verdict) {
   return [...compte.entries()].sort((a, b) => b[1] - a[1])[0][0];
 }
 
+function ventMoyenJour(heuresScorees) {
+  const v = heuresScorees.flatMap(({ score }) => sourcesAffichees(score).map((s) => s.conditions.vent)).filter((x) => x != null);
+  return v.length ? r(v.reduce((a, b) => a + b, 0) / v.length) : null;
+}
+
 function tendanceDuJour(dateIso, verdict, heuresScorees) {
-  const vents = heuresScorees.map((x) => x.h.vent10).filter((v) => v != null);
-  if (!vents.length) return null;
-  const vent = r(vents.reduce((a, b) => a + b, 0) / vents.length);
+  const vent = ventMoyenJour(heuresScorees);
+  if (vent == null) return null;
   return comparerPrevisions({ verdict, vent }, etat.instantanes[dateIso]);
 }
 
 function majInstantanes(jours) {
   let modifie = false;
   for (const j of jours) {
-    const vents = j.heures.map((x) => x.h.vent10).filter((v) => v != null);
-    if (!vents.length) continue;
+    const vent = ventMoyenJour(j.heures);
+    if (vent == null) continue;
     if (!doitRemplacerInstantane(etat.instantanes[j.dateIso])) continue;
-    etat.instantanes[j.dateIso] = {
-      verdict: j.verdictJour,
-      vent: r(vents.reduce((a, b) => a + b, 0) / vents.length),
-      ts: Date.now(),
-    };
+    etat.instantanes[j.dateIso] = { verdict: j.verdictJour, vent, ts: Date.now() };
     modifie = true;
   }
   const aujourdhui = todayIso();
@@ -351,41 +311,58 @@ function majInstantanes(jours) {
 }
 
 // ------------------------------------------------------------
-// Observation METAR
+// METAR & TAF
 // ------------------------------------------------------------
 function rendreObservation(el) {
-  const m = etat.meteo?.metar;
+  const m = etat.aero.metar;
   if (!el) return;
   const age = m ? ageMetar(m) : Infinity;
   if (!m || age > 180) { el.hidden = true; return; }
   const seuils = seuilsActifs();
   const vent = m.variable && m.dir == null ? `VRB ${m.vent}` : `${String(m.dir ?? 0).padStart(3, "0")}° ${m.vent}`;
-  const rafale = m.rafales ? ` G${m.rafales}` : "";
+  const rafale = m.rafales ? ` rafales ${m.rafales}` : "";
   const nuages = m.cavok ? "CAVOK"
     : m.nuages.length ? m.nuages.map((n) => `${n.couverture} ${formatDistance(n.baseM)}`).join(" · ") : "pas de nuage significatif";
-  const alerteVent = (m.rafales ?? m.vent ?? 0) > seuils.ventMax;
-  const alertePlafond = m.plafond < seuils.plafondMin;
-  const alerteVis = m.visibilite != null && m.visibilite < LEGAL_BE.visibiliteMin;
-  const perime = age > METAR.ageMaxMin;
+  const perime = age > AERODROME.metarAgeMaxMin;
   el.hidden = false;
   el.innerHTML = `
     <div class="obs-haut">
-      <span class="obs-titre"><span class="obs-point${perime ? " perime" : ""}"></span>Observé à ${METAR.nom} · ${heureBruxelles(m.obs)}</span>
+      <span class="obs-titre"><span class="obs-point${perime ? " perime" : ""}"></span>Observé à ${AERODROME.nom} · ${heureBruxelles(m.obs)}</span>
       <span class="obs-age">il y a ${r(age)} min</span>
     </div>
     <div class="obs-valeurs">
-      <span class="${alerteVent ? "obs-alerte" : ""}"><b>${vent}${rafale}</b> km/h</span>
-      <span class="${alertePlafond ? "obs-alerte" : ""}">${echapper(nuages)}</span>
-      <span class="${alerteVis ? "obs-alerte" : ""}">vis. ${m.visibilite != null ? formatDistance(m.visibilite) : "—"}</span>
+      <span class="${(m.rafales ?? m.vent ?? 0) > seuils.ventMax ? "obs-alerte" : ""}"><b>${vent}${rafale}</b> km/h</span>
+      <span class="${m.plafond < LEGAL_BE.plafondMinAGL ? "obs-alerte" : ""}">${echapper(nuages)}</span>
+      <span class="${m.visibilite != null && m.visibilite < LEGAL_BE.visibiliteMin ? "obs-alerte" : ""}">vis. ${m.visibilite != null ? formatDistance(m.visibilite) : "—"}</span>
       ${m.temp != null ? `<span>${m.temp}°C</span>` : ""}
       ${m.temps.length ? `<span class="obs-alerte">${echapper(m.temps.join(" "))}</span>` : ""}
     </div>
     <details class="obs-brut"><summary>METAR brut</summary><code>${echapper(m.brut)}</code></details>`;
 }
 
+/** Bloc TAF, affiché sur la vue Jour si la prévision officielle couvre ce jour. */
+function rendreTaf(el, jour) {
+  const t = etat.aero.taf;
+  const debutJour = jour.heures[0]?.utc;
+  const finJour = jour.heures[jour.heures.length - 1]?.utc;
+  if (!t || debutJour == null || t.fin.getTime() <= debutJour || t.debut.getTime() > finJour) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `
+    <div class="obs-haut">
+      <span class="obs-titre"><span class="obs-point"></span>TAF ${AERODROME.nom} — prévision officielle</span>
+      <span class="obs-age">émis ${jourHeureBruxelles(t.emis)}</span>
+    </div>
+    <p class="taf-validite">Valable du ${jourHeureBruxelles(t.debut)} au ${jourHeureBruxelles(t.fin)} · aérodrome à ${AERODROME.distanceKm} km</p>
+    <code class="taf-brut">${echapper(t.brut)}</code>`;
+}
+
 // ------------------------------------------------------------
 // Vue Semaine
 // ------------------------------------------------------------
+function texteAccord(a) {
+  return a ? `${a.favorables}/${a.total}` : "—";
+}
+
 function rendreSemaine() {
   const jours = joursOuvertsScores();
   $("#niveau-actif").textContent = seuilsActifs().label;
@@ -404,11 +381,11 @@ function rendreSemaine() {
 
   for (const j of jours) {
     const carte = document.createElement("button");
-    carte.className = `carte-jour ${j.verdictJour}${j.lointain ? " lointain" : ""}`;
+    carte.className = `carte-jour ${j.verdictJour}${j.precision === "regional" ? " lointain" : ""}`;
     const fenetre = texteFenetre(j.meilleureFenetre);
     const bande = j.heures.map(({ h, score }) => {
-      const hauteur = score.chance == null ? 100 : Math.max(12, r(score.chance * 100));
-      return `<span class="bande-h ${score.verdict}" title="${h.heure}h · ${VERDICT_TEXTE[score.verdict]}">
+      const hauteur = score.accord.total ? Math.max(12, r((score.accord.favorables / score.accord.total) * 100)) : 100;
+      return `<span class="bande-h ${score.verdict}" title="${h.heure}h · ${VERDICT_TEXTE[score.verdict]} · ${texteAccord(score.accord)} sources favorables">
         <i style="height:${hauteur}%"></i><em>${h.heure % 2 === 0 ? h.heure : ""}</em></span>`;
     }).join("");
 
@@ -418,10 +395,10 @@ function rendreSemaine() {
           <span class="cj-nom">${JOURS_FR[j.date.getDay()]}</span>
           <span class="cj-date">${j.date.getDate()} ${MOIS_FR[j.date.getMonth()]}</span>
           ${j.ouverture.type === "ferie" ? `<span class="etiq-jour">Férié</span>` : ""}
-          ${j.lointain ? `<span class="etiq-jour">Indicatif</span>` : ""}
+          ${j.precision !== "hr" ? `<span class="etiq-jour">${j.precision === "regional" ? "Modèles 7-10 km" : "En partie 7-10 km"}</span>` : ""}
           ${rendreTendance(j.tendance)}
         </span>
-        <span class="cj-proba ${classeProba(j.chance)}">${pct(j.chance)}<small>%</small></span>
+        ${j.accordFenetre ? `<span class="cj-accord"><b>${texteAccord(j.accordFenetre)}</b><small>sources</small></span>` : ""}
       </span>
       <span class="cj-verdict">
         <span class="cj-symbole" aria-hidden="true">${VERDICT_SYMBOLE[j.verdictJour]}</span>
@@ -432,7 +409,7 @@ function rendreSemaine() {
       <span class="bande" aria-hidden="true">${bande}</span>`;
     carte.setAttribute("aria-label",
       `${JOURS_FR[j.date.getDay()]} ${j.date.getDate()} — ${VERDICT_TEXTE[j.verdictJour]}` +
-      `${fenetre ? `, ${fenetre}` : ""}${j.chance != null ? `, probabilité ${pct(j.chance)} %` : ""}`);
+      `${fenetre ? `, ${fenetre}` : ""}${j.accordFenetre ? `, ${texteAccord(j.accordFenetre)} sources favorables` : ""}`);
     carte.addEventListener("click", () => ouvrirJour(j.index));
     conteneur.appendChild(carte);
   }
@@ -461,8 +438,7 @@ function rendreDeplacement(el, params) {
   const c = conseilDeplacement({ ...params, prixLitre: etat.carburant?.prix ?? null });
   const heures = r(c.cout.minutes / 60);
   const origine = etat.carburant?.source === "statbel" ? "prix officiel du jour"
-    : etat.carburant?.source === "cache" ? "dernier prix connu"
-    : "prix de repli";
+    : etat.carburant?.source === "cache" ? "dernier prix connu" : "prix de repli";
   el.className = `deplacement dep-${c.niveau}`;
   el.hidden = false;
   el.innerHTML = `
@@ -473,16 +449,13 @@ function rendreDeplacement(el, params) {
     <p class="dep-detail">${c.detail}</p>`;
 }
 
-/**
- * Sur une journée limite, le club peut poser une BARRIÈRE D'EXPÉRIENCE
- * (nombre de sauts minimum) que l'app ne peut pas prévoir.
- */
+/** Sur une journée limite, le club peut poser une barrière d'expérience. */
 function afficherAvertissementExperience(el, verdict) {
   const concerne = verdict === "orange";
   el.hidden = !concerne;
   if (concerne) {
     el.innerHTML = `Journée limite : le club peut imposer un <strong>nombre de sauts minimum</strong>
-      pour débuter (barrière d'expérience, pas un seuil de vent).
+      pour débuter, et le RT peut durcir les limites (RSB §3.4.2).
       <a href="${LIENS.briefing}" target="_blank" rel="noopener">Vérifier le briefing du club</a>.`;
   }
 }
@@ -499,17 +472,17 @@ function rendreJour() {
   $("#jour-soustitre").textContent =
     `${info.ouverture.type === "vendredi" ? "Ouverture dès 16h" : "Ouvert dès 8h30, premiers sauts 9h"} → coucher ${heureDe(jour.sunset)} · J+${info.index}`;
 
-  // Verdict du jour
   $("#jour-verdict").className = `hero ${info.verdictJour}`;
   $("#jour-verdict-texte").innerHTML =
     `<span aria-hidden="true">${VERDICT_SYMBOLE[info.verdictJour]}</span> ${VERDICT_TEXTE[info.verdictJour]}`;
   const fenetre = texteFenetre(info.meilleureFenetre);
-  $("#jour-verdict-quand").innerHTML = fenetre
+  $("#jour-verdict-quand").innerHTML = (fenetre
     ? `Fenêtre <strong>${fenetre}</strong>${info.motif ? ` · ${echapper(info.motif.toLowerCase())}` : ""}`
-    : echapper(info.motif ?? "Aucune fenêtre de 2 h consécutives");
-  $("#jour-jauge").innerHTML = info.chance == null ? "" : `
-    <span class="jauge-valeur ${classeProba(info.chance)}">${pct(info.chance)}<small>%</small></span>
-    <span class="jauge-label">probabilité<br>de saut</span>`;
+    : echapper(info.motif ?? "Aucune fenêtre de 2 h consécutives"))
+    + `<br><span class="hero-precision">Données : ${info.precision === "hr" ? PRECISION_TEXTE.hr + (info.heures.some((x) => x.score.sources.some((src) => src.type === "taf")) ? " + TAF Charleroi" : "") : info.precision === "regional" ? PRECISION_TEXTE.regional + " (moins précis)" : "1,3-2,2 km puis 7-10 km"}</span>`;
+  $("#jour-jauge").innerHTML = info.accordFenetre ? `
+    <span class="jauge-valeur">${texteAccord(info.accordFenetre)}</span>
+    <span class="jauge-label">sources<br>favorables</span>` : "";
 
   $("#jour-creneaux").innerHTML = info.creneaux
     .map((c) => {
@@ -528,8 +501,8 @@ function rendreJour() {
 
   if (estAujourdhui) rendreObservation($("#jour-obs"));
   else $("#jour-obs").hidden = true;
+  rendreTaf($("#jour-taf"), jour);
 
-  // Heure sélectionnée par défaut : la première de la meilleure fenêtre.
   const toutes = info.heures;
   if (etat.heureSelectionnee === null && toutes.length) {
     const debut = info.meilleureFenetre?.debut;
@@ -538,27 +511,33 @@ function rendreJour() {
 
   rendreMatrice(toutes, estAujourdhui);
   const sel = toutes.find((x) => x.h.heure === etat.heureSelectionnee) ?? toutes[0];
-  if (sel) rendreDetailHeure(sel, seuils, info);
+  if (sel) rendreDetailHeure(sel, seuils);
 }
 
 // ------------------------------------------------------------
 // Tableau horaire
 // ------------------------------------------------------------
+const tempsCourt = (c) => (c.orage ? "TS" : c.cb ? "CB" : c.precip ? "RA" : c.brouillard ? "FG" : null);
+
 const LIGNES = [
   { cle: "verdict", label: "Verdict" },
-  { cle: "chance", label: "Proba %" },
-  { id: "ventSol", label: "Vent" },
+  { cle: "accord", label: "Sources ✓" },
+  { regle: "ventNiveau", label: "Vent moyen", val: (ss) => plage(ss.map((s) => s.conditions.vent)) },
+  { regle: "rafales", label: "Rafales", val: (ss) => plage(ss.map((s) => s.conditions.rafales ?? (s.conditions.rafalesAbsentesSignifientCalme ? s.conditions.vent : null))) },
   { cle: "direction", label: "Direction" },
-  { id: "rafales", label: "Rafales" },
-  { id: "cisaillement", label: "Gradient" },
-  { id: "ventOuverture", label: "Ouverture" },
-  { id: "ventLargage", label: "Largage" },
-  { id: "plafond", label: "Plafond" },
-  { id: "visibilite", label: "Visibilité" },
-  { id: "pluie", label: "Pluie" },
-  { id: "orage", label: "CAPE" },
-  { id: "froid", label: "T° 4000 m" },
-  { id: "givrage", label: "Iso 0 °C" },
+  { regle: "plafond", label: "Plafond", val: (ss) => {
+      const connus = ss.map((s) => s.conditions.plafond).filter((x) => x != null);
+      if (connus.length) return court(Math.min(...connus));
+      if (ss.some((s) => s.conditions.coucheBasse)) return "?";
+      return ss.some((s) => s.conditions.plafondAuMoins) ? ">2k" : "—";
+    } },
+  { regle: "visibilite", label: "Visibilité", val: (ss) => {
+      const v = ss.map((s) => s.conditions.visibilite).filter((x) => x != null);
+      return v.length ? court(Math.min(...v)) : "—";
+    } },
+  { regle: "orage", label: "Orage", val: (ss) => (ss.some((s) => s.conditions.orage) ? "TS" : ss.some((s) => s.conditions.cb) ? "CB" : "—") },
+  { regle: "pluie", label: "Précip.", val: (ss) => (ss.some((s) => s.conditions.precip) ? (ss.map((s) => tempsCourt(s.conditions)).find((x) => x === "RA") ?? "oui") : "—") },
+  { cle: "precision", label: "Données" },
 ];
 
 function rendreMatrice(toutes, estAujourdhui) {
@@ -574,18 +553,26 @@ function rendreMatrice(toutes, estAujourdhui) {
   const corps = LIGNES.map((ligne) => {
     const cellules = toutes.map(({ h, score }) => {
       const actif = h.heure === etat.heureSelectionnee ? " actif" : "";
+      const ss = sourcesAffichees(score);
       if (ligne.cle === "verdict") {
-        return `<td class="m-v ${score.verdict}${actif}" data-heure="${h.heure}" title="${echapper(score.raisons.join(" · ") || "Conditions favorables")}">${VERDICT_SYMBOLE[score.verdict]}</td>`;
+        return `<td class="m-v ${score.verdict}${actif}" data-heure="${h.heure}" title="${echapper(score.raisons.join(" · ") || "Toutes les règles respectées")}">${VERDICT_SYMBOLE[score.verdict]}</td>`;
       }
-      if (ligne.cle === "chance") {
-        return `<td class="${classeProba(score.chance)}${actif}" data-heure="${h.heure}">${pct(score.chance)}</td>`;
+      if (ligne.cle === "accord") {
+        const a = score.accord;
+        const cls = !a.total ? "c-na" : a.favorables === a.total ? "c-ok" : a.favorables * 2 > a.total ? "c-limite" : "c-bloquant";
+        return `<td class="${cls}${actif}" data-heure="${h.heure}">${texteAccord(a)}</td>`;
       }
       if (ligne.cle === "direction") {
-        return `<td class="c-ok${actif}" data-heure="${h.heure}"><span class="m-fleche" style="transform:rotate(${rotationFleche(h.direction10)}deg)">➤</span></td>`;
+        const dir = ss.find((s) => s.conditions.dir != null)?.conditions.dir;
+        return `<td class="c-ok${actif}" data-heure="${h.heure}">${dir != null ? `<span class="m-fleche" style="transform:rotate(${rotationFleche(dir)}deg)">➤</span>` : "—"}</td>`;
       }
-      const fct = score.facteurs.find((x) => x.id === ligne.id);
-      if (!fct) return `<td class="c-na${actif}" data-heure="${h.heure}">—</td>`;
-      return `<td class="c-${fct.statut}${actif}" data-heure="${h.heure}"${fct.motif ? ` title="${echapper(fct.motif)}"` : ""}>${echapper(fct.court)}</td>`;
+      if (ligne.cle === "precision") {
+        const t = { obs: "obs", hr: "2 km", regional: "7-10", aucune: "—" }[score.precision];
+        return `<td class="c-info${actif}" data-heure="${h.heure}">${t}</td>`;
+      }
+      const regle = score.regles.find((x) => x.id === ligne.regle);
+      const cls = regle ? CLASSE_STATUT[regle.statut] : "c-na";
+      return `<td class="${cls}${actif}" data-heure="${h.heure}"${regle?.detail ? ` title="${echapper(regle.detail)}"` : ""}>${echapper(ligne.val(ss) ?? "—")}</td>`;
     }).join("");
     return `<tr><th scope="row">${ligne.label}</th>${cellules}</tr>`;
   }).join("");
@@ -607,143 +594,103 @@ function rendreMatrice(toutes, estAujourdhui) {
 // ------------------------------------------------------------
 // Détail d'une heure
 // ------------------------------------------------------------
-const ORDRE_STATUT = { bloquant: 0, limite: 1, info: 2, ok: 3 };
-
-function rendreDetailHeure({ h, score }, seuils, info) {
+function rendreDetailHeure({ h, score }, seuils) {
   $("#detail-titre").innerHTML =
     `${h.heure}h → ${h.heure + 1}h <span class="detail-verdict ${score.verdict}">${VERDICT_SYMBOLE[score.verdict]} ${VERDICT_TEXTE[score.verdict]}</span>`;
 
   const classe = score.verdict === "rouge" ? "bloquant" : "degradant";
   $("#raisons").innerHTML = score.raisons.length
     ? score.raisons.map((x) => `<li class="${classe}">${echapper(x)}</li>`).join("")
-    : `<li class="ok">Conditions favorables pour « ${echapper(seuils.label)} »</li>`;
+    : `<li class="ok">Toutes les règles respectées pour « ${echapper(seuils.label)} » (${texteAccord(score.accord)} sources favorables)</li>`;
 
-  // Tous les facteurs, du plus grave au plus anodin.
-  const facteurs = [...score.facteurs].sort((a, b) => ORDRE_STATUT[a.statut] - ORDRE_STATUT[b.statut]);
-  $("#facteurs").innerHTML = facteurs.map((x) => `
-    <div class="facteur f-${x.statut}">
+  // Règles, avec leur source réglementaire.
+  $("#facteurs").innerHTML = score.regles.map((x) => `
+    <div class="facteur f-${x.statut === "violee" ? "bloquant" : x.statut === "ok" ? "ok" : "limite"}">
       <span class="f-point" aria-hidden="true"></span>
-      <span class="f-label">${echapper(x.label)}${x.legal ? ` <em class="f-tag">légal</em>` : ""}${x.arbitre ? ` <em class="f-tag">arbitré</em>` : ""}</span>
-      <strong class="f-valeur">${echapper(x.valeur)}</strong>
-      ${x.motif ? `<span class="f-motif">${echapper(x.motif)}</span>` : ""}
+      <span class="f-label">${echapper(x.label)} <em class="f-tag">${echapper(x.source)}</em></span>
+      <strong class="f-valeur">${LIBELLE_STATUT[x.statut]}</strong>
+      ${x.detail ? `<span class="f-motif">${echapper(x.detail)}</span>` : ""}
     </div>`).join("");
 
-  rendreConsensus(score.proba, h);
-  rendreProfil(h, score, seuils);
-  rendreSpot(h, seuils);
+  rendreSources(score);
+  rendreProfil(h);
+  rendrePiste(score);
 }
 
-function rendreConsensus(proba, h) {
-  const el = $("#consensus");
-  if (!proba) {
-    el.innerHTML = `<p class="note-hypotheses">Comparaison indisponible pour cette heure (modèles et ensembles hors ligne) : le verdict repose sur le seul modèle principal.</p>`;
-    return;
-  }
-  const p = proba.p;
-  const confiance = confianceProba(proba);
-  const LIB_CONF = { haute: "prévision tranchée", moyenne: "prévision assez nette", faible: "modèles partagés" };
-  const crit = [["rafales", "rafales"], ["vent", "vent moyen"], ["pluie", "pluie"], ["nuages", "couche basse"]]
-    .filter(([k]) => proba.echecs[k] > 0.005)
-    .map(([k, l]) => `<span>${l} <b>${r(proba.echecs[k] * 100)} %</b></span>`).join("");
-
-  const modeles = MODELES.map((m) => {
-    const d = proba.modeles.find((x) => x.id === m.id);
-    if (!d) return `<li class="mod-absent"><span>${m.nom}</span><em>hors horizon</em></li>`;
-    return `<li class="${d.passe ? "mod-oui" : "mod-non"}">
-      <span>${m.nom}${m.hr ? ` <em class="f-tag">2 km</em>` : ""}</span>
-      <b>${r(d.vent ?? 0)}<small>/</small>${r(d.rafales ?? 0)}</b>
-      <i aria-label="${d.passe ? "favorable" : "défavorable"}">${d.passe ? "✓" : "✕"}</i>
-    </li>`;
-  }).join("");
-
-  const parEns = ENSEMBLES.map((e) => {
-    const membres = (h.ensemble ?? []).filter((s) => s.ens === e.id);
-    return membres.length ? `${e.nom} ${membres.length}` : null;
-  }).filter(Boolean).join(" · ");
-
-  el.innerHTML = `
-    <div class="proba-ligne">
-      <span class="proba-valeur ${classeProba(p)}">${pct(p)}<small>%</small></span>
-      <div class="proba-barre" role="img" aria-label="Probabilité ${pct(p)} %"><span class="${classeProba(p)}" style="width:${r(p * 100)}%"></span></div>
-    </div>
-    <p class="proba-texte">des votes favorables · <strong>${LIB_CONF[confiance] ?? ""}</strong></p>
-    ${crit ? `<p class="proba-crit">Votes défavorables par critère : ${crit}</p>` : ""}
-    <ul class="modeles">${modeles}</ul>
-    <p class="note-hypotheses">Vent moyen / rafales en km/h. Ensembles : <strong>${proba.ensemble.passe}/${proba.ensemble.total}</strong>
-      scénarios favorables${parEns ? ` (${parEns})` : ""}. Leur poids augmente avec l'échéance.</p>`;
+/** Tableau des sources : chacune avec ses valeurs et son verdict propre. */
+function rendreSources(score) {
+  const ligne = (s) => {
+    const c = s.conditions;
+    const ok = Object.values(s.resultats).every((res) => res.statut === "ok" || res.statut === "inconnu");
+    const enEchec = Object.values(s.resultats).some((res) => res.statut === "echec");
+    const raf = c.rafales ?? (c.rafalesAbsentesSignifientCalme ? c.vent : null);
+    const plafond = c.plafond != null ? court(c.plafond) : c.coucheBasse ? "?" : c.plafondAuMoins ? ">2k" : "—";
+    const nom = s.type === "modele" ? `${s.nom} <small>${s.maille}</small>` : s.nom;
+    return `<tr class="${ok ? "src-oui" : enEchec ? "src-non" : "src-limite"}">
+      <th scope="row">${nom}</th>
+      <td>${c.vent != null ? r(c.vent) : "—"}</td><td>${raf != null ? r(raf) : "—"}</td>
+      <td>${plafond}</td><td>${c.visibilite != null ? court(Math.min(c.visibilite, 99000)) : "—"}</td>
+      <td>${tempsCourt(c) ?? "—"}</td>
+      <td class="src-verdict">${ok ? "✓" : enEchec ? "✕" : "▲"}</td></tr>`;
+  };
+  const taf = score.sources.find((s) => s.type === "taf");
+  const variantes = taf?.variantes?.length
+    ? `<p class="note-hypotheses">Variations du TAF sur cette heure : ${taf.variantes.map((v) => `<code>${echapper(v.libelle)}</code>`).join(" · ")}</p>` : "";
+  const absents = MODELES.filter((m) => !score.sources.some((s) => s.id === m.id));
+  $("#consensus").innerHTML = `
+    <div class="sources-cadre"><table class="sources">
+      <thead><tr><th></th><th>Vent</th><th>Raf.</th><th>Plafond</th><th>Vis.</th><th>Temps</th><th></th></tr></thead>
+      <tbody>${score.sources.map(ligne).join("")}</tbody>
+    </table></div>
+    ${variantes}
+    <p class="note-hypotheses">Vent en km/h, distances en m (k = km). Plafond « &gt;2k » : le modèle ne prévoit aucune couche ≥ 5/8 sous 2 km ;
+      « ? » : couche basse ≥ 5/8 dont le modèle ne fournit pas la base (non estimée).
+      ${score.precision === "regional" ? "<br><strong>Hors portée des modèles 1,3-2,2 km : seuls les modèles régionaux (7-10 km) couvrent cette heure.</strong>" : ""}
+      ${absents.length && score.precision !== "regional" ? `<br>Non utilisés à cette heure : ${absents.map((m) => m.nom).join(", ")} (${score.sources.some((s) => s.hr) ? "moins précis ou hors portée" : "hors portée"}).` : ""}</p>`;
 }
 
-function rendreProfil(h, score, seuils) {
+function rendreProfil(h) {
   const lignes = [];
-  for (const n of Object.values(h.niveaux ?? {})) {
-    if (n?.agl == null || n.agl < 100) continue;
-    lignes.push({ agl: n.agl, vent: n.vent, dir: n.dir, temp: n.temp, nuages: n.nuages });
+  for (const p of NIVEAUX_PROFIL) {
+    const n = h.niveaux?.[p];
+    if (n?.agl != null && n.agl > 100) lignes.push({ agl: n.agl, vent: n.vent, dir: n.dir, temp: n.temp });
   }
   for (const m of NIVEAUX_AGL) {
     const n = h.niveauxAGL?.[m];
-    if (n?.vent != null) lignes.push({ agl: m, vent: n.vent, dir: n.dir, temp: null, nuages: null });
+    if (n?.vent != null) lignes.push({ agl: m, vent: n.vent, dir: n.dir, temp: null });
   }
   lignes.sort((a, b) => b.agl - a.agl);
-  lignes.push({ agl: 0, vent: h.vent10, dir: h.direction10, temp: h.t2m, nuages: null, sol: true });
-
-  const plafond = score.nuages?.plafond ?? Infinity;
-  const marque = (agl) => {
-    const tags = [];
-    if (Math.abs(agl - DZ.altitudeLargage) < 400) tags.push("largage");
-    if (Math.abs(agl - seuils.hauteurOuverture) < 250) tags.push("ouverture");
-    if (h.isoZero != null && Math.abs(agl - h.isoZero) < 250) tags.push("0 °C");
-    return tags.join(" · ");
-  };
-
   $("#profil").innerHTML = `
-    <div class="profil-entete">
-      <span>Alt. AGL</span><span>Nuages</span><span>Vent</span><span>T°</span>
-    </div>
+    <div class="profil-entete"><span>Alt. AGL</span><span>Vent</span><span>T°</span></div>
     ${lignes.map((l) => `
-    <div class="niveau${l.sol ? " sol" : ""}${plafond !== Infinity && l.agl >= plafond && l.nuages >= 60 ? " dans-couche" : ""}">
-      <div class="niv-alt"><strong>${l.sol ? "Sol" : `${l.agl} m`}</strong><span>${l.sol ? `raf. ${r(h.rafales10 ?? 0)} km/h` : marque(l.agl)}</span></div>
-      <div class="niv-nuages">${l.nuages != null
-        ? `<span class="nuage-barre"><i style="width:${l.nuages}%" class="${l.nuages >= 60 ? "couche" : ""}"></i></span><small>${r(l.nuages)}%</small>`
-        : `<small class="faible">—</small>`}</div>
+    <div class="niveau">
+      <div class="niv-alt"><strong>${l.agl} m</strong></div>
       <div class="niv-vent">
         <span class="fleche-icone" style="transform: rotate(${rotationFleche(l.dir)}deg)">➤</span>
         <b>${l.vent != null ? r(l.vent) : "—"}</b><small>${cardinal(l.dir)}</small>
       </div>
       <div class="niv-temp">${l.temp != null ? `${r(l.temp)}°` : "—"}</div>
     </div>`).join("")}
-    <p class="note-hypotheses">Plafond analysé : <strong>${plafond === Infinity ? "aucune couche ≥ 60 % sous 4200 m" : `~${formatDistance(plafond)}`}</strong>
-      (${score.nuages?.source === "profil" ? "profil vertical" : "estimation T/Td"}) · largage possible jusqu'à
-      <strong>${formatDistance(score.nuages?.largagePossible ?? DZ.altitudeLargage)}</strong>
-      ${h.isoZero != null ? ` · isotherme 0 °C à ${formatDistance(h.isoZero)}` : ""}.</p>`;
+    <p class="note-hypotheses">Modèle ICON (DWD), à titre d'information : le RSB §3.4.2 impose de
+      <em>connaître</em> le vent en altitude, sans fixer de limite. Isotherme 0 °C :
+      ${h.isoZero != null ? formatDistance(h.isoZero) : "—"} · CAPE : ${h.cape != null ? `${r(h.cape)} J/kg` : "—"}.</p>`;
 }
 
-function rendreSpot(h, seuils) {
-  const spot = estimerSpot(h, seuils.hauteurOuverture, DZ.altitudeLargage);
-  const ventHaut = h.niveaux?.[600]?.vent ?? null;
-  $("#spot").innerHTML = [
-    statCell("Sous voile", formatDistance(spot.voile.distance), cardinal(spot.voile.cap)),
-    statCell("En chute", formatDistance(spot.chute.distance), cardinal(spot.chute.cap)),
-    statCell("Dérive totale", formatDistance(spot.total.distance), cardinal(spot.total.cap)),
-    statCell("Largage", `${String(spot.pointLargage.cap).padStart(3, "0")}° · ${formatDistance(spot.pointLargage.distance)}`, cardinal(spot.pointLargage.cap)),
-    statCell("Séparation", `~${separationGroupes(ventHaut)}`, "s"),
-  ].join("");
-  $("#spot-note").textContent =
-    `Estimation : ouverture ${seuils.hauteurOuverture} m, largage ${DZ.altitudeLargage} m, ` +
-    `${VOL.tauxChuteVoile} m/s sous voile, ${VOL.vitesseChuteLibre} m/s en chute, sans pilotage. ` +
-    `« Largage » = cap et distance à remonter depuis la zone de poser. Séparation : ${VOL.separationGroupes} m ` +
-    `entre groupes à ~${VOL.vitesseAvionLargage} km/h de vitesse propre face au vent. Le largueur reste la référence.`;
-
-  rendreBoussole(h.direction10 ?? 0, h.vent10 ?? 0, spot.total.cap);
-  const vp = ventPiste(h.vent10 ?? 0, h.direction10 ?? 0);
+function rendrePiste(score) {
+  const s = sourcesAffichees(score).find((x) => x.conditions.vent != null && x.conditions.dir != null)
+    ?? score.sources.find((x) => x.conditions.vent != null && x.conditions.dir != null);
+  const vent = s?.conditions.vent ?? 0;
+  const dir = s?.conditions.dir ?? 0;
+  rendreBoussole(dir, vent);
+  const vp = ventPiste(vent, dir);
   $("#crosswind").innerHTML = `
-    <div class="ligne"><span>Vent au sol</span><strong>${cardinal(h.direction10)} ${r(h.direction10 ?? 0)}°</strong></div>
+    <div class="ligne"><span>Vent (${echapper(s?.nom ?? "—")})</span><strong>${cardinal(dir)} ${r(dir)}° · ${r(vent)} km/h</strong></div>
     <div class="ligne"><span>Traversier</span><strong>${vp.traversier} km/h</strong></div>
     <div class="ligne"><span>De face</span><strong>${vp.face} km/h</strong></div>
-    <span class="note">Axe piste ${String(DZ.qfu).padStart(3, "0")}° / ${DZ.qfu + 180}°. Indicatif : sous voile on pose face à la manche à air.</span>`;
+    <span class="note">Axe piste ${String(DZ.qfu).padStart(3, "0")}° / ${DZ.qfu + 180}°. Sous voile, on pose face à la manche à air.</span>`;
 }
 
-/** Boussole : axe de piste, vent au sol (plein) et dérive estimée (pointillé). */
-function rendreBoussole(direction, vitesse, capDerive) {
+function rendreBoussole(direction, vitesse) {
   const versOu = direction + 180;
   $("#boussole").innerHTML = `
     <circle cx="60" cy="60" r="54" class="b-cercle"/>
@@ -754,10 +701,6 @@ function rendreBoussole(direction, vitesse, capDerive) {
     <g transform="rotate(${DZ.qfu} 60 60)">
       <rect x="55" y="14" width="10" height="92" rx="3" class="b-piste"/>
       <line x1="60" y1="20" x2="60" y2="100" class="b-axe"/>
-    </g>
-    <g transform="rotate(${capDerive} 60 60)">
-      <line x1="60" y1="60" x2="60" y2="30" class="b-derive"/>
-      <polygon points="60,20 55,32 65,32" class="b-derive-pointe"/>
     </g>
     <g transform="rotate(${versOu} 60 60)">
       <line x1="60" y1="60" x2="60" y2="26" class="b-vent" style="stroke-width:${Math.min(6, 2 + vitesse / 10)}"/>
@@ -773,39 +716,38 @@ function rendreReglages() {
   $("#reglage-niveau").innerHTML = Object.entries(NIVEAUX_PRATIQUE)
     .map(([cle, n]) => `<option value="${cle}"${cle === etat.reglages.niveau ? " selected" : ""}>${n.label}</option>`)
     .join("");
-  const base = NIVEAUX_PRATIQUE[etat.reglages.niveau] ?? NIVEAUX_PRATIQUE.tandem;
-  $("#reglage-vent").value = etat.reglages.ventMax ?? base.ventMax;
-  $("#reglage-plafond").value = etat.reglages.plafondMin ?? base.plafondMin;
+  const s = seuilsActifs();
+  const champ = $("#reglage-vent");
+  champ.max = s.ventMaxReglement;
+  champ.value = s.ventMax;
+  $("#reglage-vent-borne").textContent =
+    `Limite du règlement pour ce niveau : ${s.ventMaxReglement} km/h (RSB §3.4.2). Tu peux seulement la durcir.`;
+  $("#reglage-resume").innerHTML = `
+    <li>Vent moyen et rafales ≤ <strong>${s.ventMax} km/h</strong>${s.ventMax < s.ventMaxReglement ? " (durci par toi)" : ""}</li>
+    <li>Vent moyen ≤ <strong>${LEGAL_BE.ventMoyenMaxSol} km/h</strong> (25 kts, loi)</li>
+    <li>Base des nuages ≥ <strong>${LEGAL_BE.plafondMinAGL} m</strong> (3000 ft) · visibilité ≥ <strong>3 km</strong></li>
+    <li>Ouverture : <strong>${s.hauteurOuverture} m</strong> — ${echapper(s.sourceOuverture)}</li>`;
 }
 
 function brancherReglages() {
   $("#reglage-niveau").addEventListener("change", (e) => {
     etat.reglages.niveau = e.target.value;
     etat.reglages.ventMax = null;
-    etat.reglages.plafondMin = null;
     sauverReglages();
     rendreReglages();
     rendreSemaine();
   });
-  // Bornes issues du droit belge (CIR/GDF-05 §6) : on ne peut pas se
-  // régler un seuil qui autoriserait un saut interdit.
   $("#reglage-vent").addEventListener("change", (e) => {
-    const v = Math.max(5, Math.min(LEGAL_BE.ventMoyenMaxSol, Number(e.target.value) || 0));
-    etat.reglages.ventMax = v;
+    const max = (NIVEAUX_PRATIQUE[etat.reglages.niveau] ?? NIVEAUX_PRATIQUE.tandem).ventMax;
+    const v = Math.max(5, Math.min(max, Number(e.target.value) || max));
+    etat.reglages.ventMax = v < max ? v : null;
     e.target.value = v;
     sauverReglages();
-    rendreSemaine();
-  });
-  $("#reglage-plafond").addEventListener("change", (e) => {
-    const p = Math.max(LEGAL_BE.plafondMinAGL, Math.min(4000, Number(e.target.value) || 0));
-    etat.reglages.plafondMin = p;
-    e.target.value = p;
-    sauverReglages();
+    rendreReglages();
     rendreSemaine();
   });
   $("#reglage-reset").addEventListener("click", () => {
     etat.reglages.ventMax = null;
-    etat.reglages.plafondMin = null;
     sauverReglages();
     rendreReglages();
     rendreSemaine();
@@ -822,7 +764,6 @@ function basculerVue(nom) {
   window.scrollTo({ top: 0 });
 }
 
-/** Thème auto : planche de bord sombre la nuit, variante claire de jour. */
 function appliquerTheme() {
   let nuit;
   const aujourdHui = etat.meteo?.jours?.[0];
@@ -840,34 +781,26 @@ function appliquerTheme() {
 const AGE_PERIME_MIN = 90;
 
 function afficherFraicheur() {
-  const { recupereLe, sources } = etat.meteo;
-  const date = new Date(recupereLe);
+  const date = new Date(etat.meteo.recupereLe);
   const ageMin = (Date.now() - date.getTime()) / 60000;
   const maj = $("#maj");
   const liste = [
-    "modèle principal",
-    sources.modeles ? "7 modèles" : null,
-    sources.ensembles ? "122 scénarios d'ensemble" : null,
-    sources.metar ? `METAR ${METAR.station}` : null,
+    "8 modèles (5 à 1,3-2,2 km)",
+    etat.aero.taf ? `TAF ${AERODROME.station}` : null,
+    etat.aero.metar ? `METAR ${AERODROME.station}` : null,
   ].filter(Boolean).join(" + ");
-  const manquants = [
-    !sources.modeles ? "modèles de comparaison" : null,
-    !sources.ensembles ? "ensembles" : null,
-  ].filter(Boolean);
   if (ageMin > AGE_PERIME_MIN) {
     maj.innerHTML = `⚠️ <strong>Prévisions non rafraîchies depuis ${r(ageMin / 60)} h</strong> (dernier succès réseau à ${heureBruxelles(date)}) — vérifie ta connexion avant de te fier au verdict.`;
     maj.classList.add("perime");
   } else {
-    maj.innerHTML = `${liste} · mis à jour à ${heureBruxelles(date)}` +
-      (manquants.length ? `<br>⚠️ Indisponible : ${manquants.join(", ")} — probabilité moins fiable.` : "");
-    maj.classList.toggle("perime", manquants.length > 0);
+    maj.textContent = `${liste} · mis à jour à ${heureBruxelles(date)}`;
+    maj.classList.remove("perime");
   }
 }
 
-/** Re-rend la vue affichée (après l'arrivée tardive d'une donnée). */
 function rafraichirVueCourante() {
   if (!$("#vue-jour").hidden) rendreJour();
-  else rendreSemaine();
+  else if (!$("#vue-semaine").hidden) rendreSemaine();
 }
 
 // ------------------------------------------------------------
@@ -888,11 +821,11 @@ async function init() {
   $("#btn-retour").addEventListener("click", () => basculerVue("semaine"));
   $("#btn-reglages").addEventListener("click", ouvrirReglages);
   $("#btn-niveau").addEventListener("click", ouvrirReglages);
-  $("#btn-reglages-retour").addEventListener("click", () => basculerVue("semaine"));
+  $("#btn-reglages-retour").addEventListener("click", () => { basculerVue("semaine"); rendreSemaine(); });
   brancherReglages();
 
-  // Observation lancée tout de suite, branchée dès qu'elle arrive.
-  const metarPromesse = chargerMetar();
+  // METAR + TAF lancés tout de suite, branchés dès qu'ils arrivent.
+  const aeroPromesse = chargerAero();
 
   try {
     const [meteo, carburant] = await Promise.allSettled([chargerMeteo(), prixDiesel()]);
@@ -905,10 +838,9 @@ async function init() {
     $("#chargement").hidden = true;
     $("#vue-semaine").hidden = false;
 
-    const metar = await metarPromesse;
-    if (metar) {
-      etat.meteo.metar = metar;
-      etat.meteo.sources.metar = true;
+    const aero = await aeroPromesse;
+    if (aero.metar || aero.taf) {
+      etat.aero = aero;
       afficherFraicheur();
       rafraichirVueCourante();
     }
@@ -927,15 +859,10 @@ async function init() {
 init();
 
 // ------------------------------------------------------------
-// Service worker & mise à jour automatique
-//
-// Une app installée (TWA/WebAPK) garde la page vivante entre deux
-// ouvertures : rien ne vérifierait jamais l'arrivée d'une nouvelle
-// version sans les mécanismes ci-dessous.
+// Service worker & mise à jour automatique (TWA/WebAPK : la page reste
+// vivante entre deux ouvertures, il faut chercher activement les mises à jour).
 // ------------------------------------------------------------
 if ("serviceWorker" in navigator) {
-  // Première prise de contrôle : pas de rechargement. Tout changement
-  // SUIVANT signifie qu'une nouvelle version vient de s'activer.
   let controleurConnu = navigator.serviceWorker.controller;
   let rechargeEnCours = false;
 
@@ -949,11 +876,7 @@ if ("serviceWorker" in navigator) {
     location.reload();
   });
 
-  // updateViaCache "none" : le script du SW n'est jamais relu depuis le
-  // cache HTTP (max-age=600 sur GitHub Pages).
   navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).then((reg) => {
-    // Recherche de mise à jour à chaque retour au premier plan (seul signal
-    // fiable dans une TWA) : visibilitychange, pageshow (bfcache), focus.
     let derniereVerif = 0;
     const chercherMaj = () => {
       if (document.hidden) return;
