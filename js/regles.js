@@ -22,7 +22,7 @@ import { LEGAL_BE, COUCHE_PLAFOND } from "./config.js";
 export const REGLES = [
   { id: "ventLegal",  label: "Vent moyen ≤ 25 kts",           source: "CIR/GDF-05 §6 c" },
   { id: "ventNiveau", label: "Vent moyen ≤ limite du brevet",  source: "RSB FWCP §3.4.2" },
-  { id: "rafales",    label: "Rafales ≤ limite du brevet",     source: "RSB FWCP §3.4.2 (appliqué à la rafale)" },
+  { id: "rafales",    label: "Rafales ≤ limite du brevet",     source: "prudence de l'app · le RSB §3.4.2 ne précise pas moyenne ou rafale" },
   { id: "plafond",    label: "Base des nuages ≥ 3000 ft",      source: "CIR/GDF-05 §6 b · RSB §3.4.1" },
   { id: "ouverture",  label: "Ouverture sous la couche",       source: "RSB §6.4.1 (tandem) · club (AFF)" },
   { id: "visibilite", label: "Visibilité ≥ 3 km",              source: "CIR/GDF-05 §6 a · RSB §3.4.1" },

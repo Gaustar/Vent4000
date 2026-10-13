@@ -4,6 +4,29 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [2.3.0] — 2026-10-13
+
+Recherche dans les textes d'origine sur les questions restées ouvertes
+(détail dans le README, « Ce qui reste à faire confirmer par le RT »).
+Les seuils et le calcul du verdict sont inchangés ; ce qui change, c'est
+ce que l'app affirme à leur sujet.
+
+### Modifié
+- **Rafales : un choix de prudence, plus une « règle ».** Aucun texte belge
+  ne dit si la limite du brevet porte sur le vent moyen ou sur la rafale
+  (GDF-05 §6 : « moyenne » ; RSB FWCP et BVR VVP : « vitesse du vent »).
+  L'app continue d'appliquer la limite aux deux, mais ne cite plus le RSB
+  comme source de la règle « rafales » : elle l'annonce comme sa prudence.
+- **Sources partielles.** Une source qui ne contredit aucune règle mais ne
+  fournit pas une donnée légale (base d'une couche basse, visibilité)
+  n'est plus présentée comme pleinement favorable : « 3/3 sources, dont 2
+  partielles », et « ~ » au lieu de « ✓ » dans le tableau des sources.
+- **Carburant au choix** : diesel, essence 95 E10 ou 98 E5 (prix officiels
+  Statbel). Sans prix connu pour le carburant choisi, pas de montant.
+
+### Tests
+83 tests (+ sources partielles, prix par carburant).
+
 ## [2.2.0] — 2026-10-13
 
 Préparation d'une présentation au club : l'app ne suppose plus rien de

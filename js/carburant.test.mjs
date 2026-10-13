@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lirePrix, prixDiesel, PRODUIT_DIESEL } from "./carburant.js";
+import { lirePrix, prixDiesel, prixPour, PRODUIT_DIESEL } from "./carburant.js";
 import { coutAllerRetour } from "./config.js";
 
 const TRAJET = { distanceAllerKm: 113, dureeAllerMin: 90, consoL100: 6 };
@@ -81,4 +81,15 @@ test("Un prix plus élevé renchérit bien le trajet", () => {
 
 test("Le produit visé est bien le diesel routier", () => {
   assert.equal(PRODUIT_DIESEL, "Diesel B7 (€/L)");
+});
+
+test("prixPour : prix du carburant choisi, null s'il n'est pas connu", async () => {
+  const lu = await prixDiesel(async () => new Response(JSON.stringify(REPONSE)));
+  assert.equal(prixPour(lu, "diesel"), 2.501);
+  // Absent de l'extrait : pas de prix, donc pas de montant (jamais le diesel à la place).
+  assert.equal(prixPour(lu, "e10"), null);
+  // Ancien cache (avant le choix du carburant) : seul le diesel est connu.
+  assert.equal(prixPour({ prix: 2.4 }, "diesel"), 2.4);
+  assert.equal(prixPour({ prix: 2.4 }, "e5"), null);
+  assert.equal(prixPour(null, "diesel"), null);
 });

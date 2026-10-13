@@ -291,10 +291,44 @@ le briefing du club fait foi.
 
 ### Ce qui reste à faire confirmer par le RT
 
-1. 🔴 **Moyenne ou rafale ?** Le RSB dit « vitesse de vent » ; seul GDF-05 précise « moyenne ». L'app applique la limite du brevet à la rafale aussi.
-2. 🟠 **Tandem** : hors barème (le passager n'a pas de brevet) ; l'app applique 7 m/s.
-3. 🟠 **Couche sous l'altitude d'ouverture** (tandem 5000 ft, AFF ~1500 m) : le RSB fixe l'altitude d'ouverture, pas la conduite à tenir si une couche est plus basse ; l'app met orange.
-4. ⚪️ **Brevet B** : levé par le BVR VVP (voir ci-dessus), à confirmer.
+Recherche du 2026-10-13 dans les textes d'origine : aucun texte belge ne
+répond aux questions 1 à 4. Les réponses ne peuvent venir que du RT.
+
+1. 🔴 **Moyenne ou rafale ?** GDF-05 §6 dit « 25 kts de moyenne » ; le RSB
+   FWCP (§3.4.2) et le BVR flamand disent « vitesse du vent » / « grondwind »
+   sans préciser ; la DT49 française ne contient pas le mot « rafale ». Seul
+   texte trouvé qui parle de rafales : le manuel britannique (suspension des
+   sauts après deux rafales au-dessus de la limite en cinq minutes).
+   **L'app applique la limite du brevet à la rafale aussi, et l'annonce
+   comme sa prudence, pas comme une règle écrite.**
+2. 🟠 **Tandem** : le RSB §6.4.1.1 renvoie aux « instructions des
+   constructeurs ». Le manuel UPT Sigma donne une plage *optimale* de 5 à
+   20 mph, pas de maximum chiffré. L'app applique 7 m/s (palier « jusqu'au
+   brevet B inclus »). Repère étranger : 20 kts au Royaume-Uni.
+3. 🟠 **Couche sous l'altitude d'ouverture** (tandem 5000 ft, AFF ~1500 m) :
+   rien dans GDF-05 ni dans le RSB ; l'app met orange. Repère étranger : au
+   Royaume-Uni, pas de sortie d'avion si le sol n'est pas visible entre le
+   point d'ouverture et la zone de posé.
+4. 🟠 **« Base de nuages » : toute couche, ou plafond ?** La loi écrit
+   « base de nuages », le RSB « couverture nuageuse », le BVR « plafond ».
+   L'app ne retient qu'une couche ≥ 5/8 (définition OACI du plafond,
+   Annexe 2 : couche couvrant plus de la moitié du ciel). Des nuages épars
+   sous 3000 ft ne bloquent donc pas le verdict.
+5. ✅ **Brevet B** : tranché par le BVR VVP (« Tot en met B-brevet : 14
+   knopen / Vanaf C-brevet : 25 knopen »), relu le 2026-10-13.
+
+### Limites des sources de données
+
+- **Base des nuages** : sur 13 modèles interrogés (Open-Meteo, 2026-10-13),
+  seuls HARMONIE DMI et UKMO 2 km la fournissent. Au-delà de leur portée
+  (≈ J+2), le plafond n'est vérifiable que si aucune couche basse ≥ 5/8
+  n'est prévue ; AROME HD et ARPEGE ne fournissent pas la visibilité. D'où
+  les sources « partielles ».
+- **Open-Meteo** : gratuit pour un usage non commercial (site ou app sans
+  abonnement ni publicité), moins de 10 000 appels par jour, CC BY 4.0.
+- **MET Norway** : leurs conditions demandent qu'une app navigateur passe
+  par un serveur relais ; l'appel direct est toléré à faible volume. À
+  revoir si l'app est adoptée par tout le club.
 
 ## Sources
 
@@ -304,8 +338,10 @@ le briefing du club fait foi.
 - **[Open-Meteo](https://open-meteo.com)** — modèles AROME HD (Météo-France), ICON-D2 et ICON-EU (DWD), HARMONIE-AROME (KNMI, DMI), UKMO 2 km (Met Office), ECMWF IFS, ARPEGE. Gratuit, sans clé, CORS ouvert.
 - **[MET Norway — tafmetar](https://api.met.no/weatherapi/tafmetar/1.0/documentation)** — METAR et TAF de Charleroi (EBCI), CORS ouvert.
 - [paraclubnamur.be](https://paraclubnamur.be) — saison, créneaux, heure réelle de début des séances, journées continues de fin octobre, hauteur d'ouverture élève.
-- **[Statbel — Tarif officiel des produits pétroliers](https://bestat.statbel.fgov.be/bestat/crosstable.xhtml?view=9e9cf394-6c54-4d81-8013-7124a8c4bf15)** (Direction générale de l'Énergie, SPF Économie) — prix maximum légal du diesel B7, mis à jour quotidiennement, CC BY 4.0. Consommé en direct par l'app.
+- **[Statbel — Tarif officiel des produits pétroliers](https://bestat.statbel.fgov.be/bestat/crosstable.xhtml?view=9e9cf394-6c54-4d81-8013-7124a8c4bf15)** (Direction générale de l'Énergie, SPF Économie) — prix maximum légal du diesel B7 et des essences 95 E10 / 98 E5, mis à jour quotidiennement, CC BY 4.0. Consommé en direct par l'app.
 - [FFP — Directive Technique n°49](https://www.ffp.asso.fr/wp-content/uploads/2025/04/Directive-Technique-49-modifiee-15-avril-2025.pdf) — fédération **française**, utilisée en substitution jusqu'en v1.5.0, **remplacée** par le RSB FWCP en v1.6.0. Conservée ici pour la traçabilité des anciennes valeurs.
+- [British Skydiving — Operations Manual (juin 2026), Section 8](https://britishskydiving.org/operations-manual/) — fédération **britannique**, non applicable en Belgique ; seul texte trouvé qui traite les rafales (§2.2), le tandem (20 kts, §2.1.2) et la vue du sol (§3.1).
+- [UPT — manuel Sigma (MAN-013)](https://paraorg.dfv.aero/uploads/manual_sigma_man-013.pdf) — constructeur tandem : plage de vent « optimale » 5-20 mph, sans maximum chiffré.
 - [USPA SIM](https://www.uspa.org/sim) — limites de vent par niveau/licence (référence USPA générale)
 - [Skydivemag — Winds Limits Part 1](https://www.skydivemag.com/new/winds-limits-part-1-what-every-skydiver-should-know/) — règle "gust = limite", spread par expérience
 - [Skydivemag — Crosswind Landings](https://www.skydivemag.com/new/crosswind-landings/) · [Landing Priorities](https://www.skydivemag.com/new/landing-priorities/) — le crosswind piste n'est pas le facteur déterminant pour la sécurité d'atterrissage

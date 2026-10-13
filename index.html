@@ -52,7 +52,7 @@
       </div>
 
       <h2 class="etiquette">Jours d'ouverture
-        <span class="hint">x/y = sources qui valident toute la fenêtre</span></h2>
+        <span class="hint">x/y = sources sans règle violée sur toute la fenêtre</span></h2>
       <div id="jours" class="jours"></div>
 
       <a id="lien-briefing" class="lien-bloc" target="_blank" rel="noopener">
@@ -163,10 +163,14 @@
           <input id="reglage-trajet-min" type="number" min="1" max="900" step="1" inputmode="numeric">
         </label>
         <label class="champ">
-          <span>Consommation <em>L/100 km, diesel</em></span>
+          <span>Consommation <em>L/100 km</em></span>
           <input id="reglage-trajet-conso" type="number" min="1" max="30" step="0.1" inputmode="decimal">
-          <small class="champ-borne">Le montant utilise le prix officiel du diesel du jour (Statbel) ;
-            laisse vide pour n'afficher que les kilomètres et la durée.</small>
+        </label>
+        <label class="champ">
+          <span>Carburant</span>
+          <select id="reglage-trajet-carburant"></select>
+          <small class="champ-borne">Le montant utilise le prix officiel du jour (Statbel) ;
+            laisse la consommation vide pour n'afficher que les kilomètres et la durée.</small>
         </label>
       </div>
 
@@ -194,7 +198,11 @@
           <strong>Rouge</strong> : une règle non respectée.
           <strong>Orange</strong> : une règle divergente, non vérifiable, ou une condition
           sans seuil écrit (pluie, cumulonimbus, couche sous l'altitude d'ouverture).
-          <strong>Vert</strong> : toutes les règles respectées par toutes les sources.
+          <strong>Vert</strong> : toutes les règles respectées par toutes les sources qui
+          les renseignent. Une source <em>partielle</em> ne contredit aucune règle mais ne
+          fournit pas toutes les données légales (base des nuages, visibilité).
+          <strong>Rafales :</strong> aucun texte belge ne dit si la limite du brevet porte sur
+          le vent moyen ou sur la rafale ; par prudence, l'app l'applique aux deux.
           Un jour est sautable s'il offre au moins 2 h consécutives.
         </p>
       </div>
