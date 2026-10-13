@@ -9,9 +9,6 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./css/style.css">
 </head>
 <body>
@@ -45,6 +42,14 @@
     <!-- ============ Vue Semaine ============ -->
     <section id="vue-semaine" hidden>
       <div id="obs" class="obs" hidden></div>
+
+      <div id="choix-niveau" class="bloc choix-niveau" hidden>
+        <h2 class="etiquette">Quel est ton niveau ?</h2>
+        <p class="legal-texte">La limite de vent et l'altitude d'ouverture en dépendent
+          (RSB FWCP §3.4.2, §3.5, §6.4.1). En attendant ton choix, le palier le plus
+          strict est appliqué.</p>
+        <div id="choix-niveau-boutons" class="choix-niveau-boutons"></div>
+      </div>
 
       <h2 class="etiquette">Jours d'ouverture
         <span class="hint">x/y = sources qui valident toute la fenêtre</span></h2>
@@ -143,6 +148,26 @@
         <ul id="reglage-resume" class="resume-regles"></ul>
 
         <button id="reglage-reset" class="btn secondaire">Revenir à la limite du règlement</button>
+      </div>
+
+      <div class="bloc">
+        <h3 class="etiquette">Mon trajet <span class="hint">facultatif, sans effet sur le verdict</span></h3>
+        <p class="legal-texte">Pour chiffrer ce que coûte un déplacement pour rien. Ces valeurs
+          restent sur ton téléphone.</p>
+        <label class="champ">
+          <span>Distance aller <em>km</em></span>
+          <input id="reglage-trajet-km" type="number" min="1" max="1000" step="1" inputmode="numeric">
+        </label>
+        <label class="champ">
+          <span>Durée aller <em>minutes</em></span>
+          <input id="reglage-trajet-min" type="number" min="1" max="900" step="1" inputmode="numeric">
+        </label>
+        <label class="champ">
+          <span>Consommation <em>L/100 km, diesel</em></span>
+          <input id="reglage-trajet-conso" type="number" min="1" max="30" step="0.1" inputmode="decimal">
+          <small class="champ-borne">Le montant utilise le prix officiel du diesel du jour (Statbel) ;
+            laisse vide pour n'afficher que les kilomètres et la durée.</small>
+        </label>
       </div>
 
       <div class="bloc">

@@ -30,9 +30,12 @@ const etat = {
 };
 
 function chargerReglages() {
-  const defauts = { niveau: "tandem", ventMax: null };
+  // `niveauChoisi` : faux au tout premier lancement, tant que le membre n'a
+  // pas indiqué son niveau (le palier le plus strict s'applique en attendant).
+  const defauts = { niveau: "tandem", ventMax: null, trajet: null, niveauChoisi: false };
   try {
-    const lu = { ...defauts, ...JSON.parse(localStorage.getItem(CLE_REGLAGES) || "{}") };
+    const brut = localStorage.getItem(CLE_REGLAGES);
+    const lu = { ...defauts, niveauChoisi: !!brut, ...JSON.parse(brut || "{}") };
     if (!NIVEAUX_PRATIQUE[lu.niveau]) lu.niveau = "tandem";
     return lu;
   } catch {
@@ -369,6 +372,7 @@ function rendreSemaine() {
   const jours = joursOuvertsScores();
   $("#niveau-actif").textContent = seuilsActifs().label;
   rendreObservation($("#obs"));
+  rendreChoixNiveau();
 
   const conteneur = $("#jours");
   conteneur.innerHTML = "";
@@ -437,18 +441,43 @@ function ouvrirJour(index) {
 }
 
 function rendreDeplacement(el, params) {
-  const c = conseilDeplacement({ ...params, prixLitre: etat.carburant?.prix ?? null });
-  const heures = r(c.cout.minutes / 60);
-  const origine = etat.carburant?.source === "statbel" ? "prix officiel du jour"
-    : etat.carburant?.source === "cache" ? "dernier prix connu" : "prix de repli";
+  const c = conseilDeplacement({ ...params, prixLitre: etat.carburant?.prix ?? null, trajet: etat.reglages.trajet });
+  // Le trajet est celui du membre (réglages) : rien n'est affiché sans lui,
+  // et chaque élément seulement s'il est connu.
+  let cout = "";
+  if (c.cout) {
+    const parties = [
+      `${r(c.cout.km)} km`,
+      c.cout.minutes != null ? texteDuree(c.cout.minutes) : null,
+      c.cout.euros != null ? `~${c.cout.euros} €` : null,
+    ].filter(Boolean).join(" · ");
+    const origine = etat.carburant?.source === "statbel" ? "prix officiel du jour" : "dernier prix officiel connu";
+    const titre = c.cout.euros != null ? ` title="Diesel B7 à ${c.cout.prixLitre.toFixed(3)} €/L — ${origine}"` : "";
+    cout = `<span class="dep-cout"${titre}>${parties}</span>`;
+  }
   el.className = `deplacement dep-${c.niveau}`;
   el.hidden = false;
   el.innerHTML = `
     <div class="dep-haut">
       <strong class="dep-titre">${c.titre}</strong>
-      <span class="dep-cout" title="Diesel B7 à ${c.cout.prixLitre.toFixed(3)} €/L — ${origine}">${c.cout.km} km · ${heures} h · ~${c.cout.euros} €</span>
+      ${cout}
     </div>
     <p class="dep-detail">${c.detail}</p>`;
+}
+
+function texteDuree(minutes) {
+  const h = Math.floor(minutes / 60);
+  const m = r(minutes - h * 60);
+  return h ? `${h} h${m ? ` ${String(m).padStart(2, "0")}` : ""}` : `${m} min`;
+}
+
+/** Premier lancement : le membre indique son niveau, une fois. */
+function rendreChoixNiveau() {
+  const el = $("#choix-niveau");
+  el.hidden = etat.reglages.niveauChoisi;
+  if (el.hidden) return;
+  $("#choix-niveau-boutons").innerHTML = Object.entries(NIVEAUX_PRATIQUE)
+    .map(([cle, n]) => `<button class="btn secondaire" data-niveau="${cle}">${n.label}</button>`).join("");
 }
 
 /** Sur une journée limite, le club peut poser une barrière d'expérience. */
@@ -607,10 +636,10 @@ function rendreDetailHeure({ h, score }, seuils) {
 
   // Règles, avec leur source réglementaire.
   $("#facteurs").innerHTML = score.regles.map((x) => `
-    <div class="facteur f-${x.statut === "violee" ? "bloquant" : x.statut === "ok" ? "ok" : "limite"}">
+    <div class="facteur f-${x.statut === "violee" ? "bloquant" : x.statut !== "ok" ? "limite" : x.total ? "ok" : "na"}">
       <span class="f-point" aria-hidden="true"></span>
       <span class="f-label">${echapper(x.label)} <em class="f-tag">${echapper(x.source)}</em></span>
-      <strong class="f-valeur">${LIBELLE_STATUT[x.statut]}</strong>
+      <strong class="f-valeur">${x.statut === "ok" && !x.total ? "sans donnée" : LIBELLE_STATUT[x.statut]}</strong>
       ${x.detail ? `<span class="f-motif">${echapper(x.detail)}</span>` : ""}
     </div>`).join("");
 
@@ -729,12 +758,38 @@ function rendreReglages() {
     <li>Vent moyen ≤ <strong>${LEGAL_BE.ventMoyenMaxSol} km/h</strong> (25 kts, loi)</li>
     <li>Base des nuages ≥ <strong>${LEGAL_BE.plafondMinAGL} m</strong> (3000 ft) · visibilité ≥ <strong>3 km</strong></li>
     <li>Ouverture : <strong>${s.hauteurOuverture} m</strong> — ${echapper(s.sourceOuverture)}</li>`;
+  const t = etat.reglages.trajet ?? {};
+  $("#reglage-trajet-km").value = t.distanceAllerKm ?? "";
+  $("#reglage-trajet-min").value = t.dureeAllerMin ?? "";
+  $("#reglage-trajet-conso").value = t.consoL100 ?? "";
 }
 
 function brancherReglages() {
+  $("#choix-niveau-boutons").addEventListener("click", (e) => {
+    const cle = e.target.closest("[data-niveau]")?.dataset.niveau;
+    if (!NIVEAUX_PRATIQUE[cle]) return;
+    etat.reglages.niveau = cle;
+    etat.reglages.ventMax = null;
+    etat.reglages.niveauChoisi = true;
+    sauverReglages();
+    rendreSemaine();
+  });
+  // Trajet : un champ vide ou invalide efface la valeur, rien n'est supposé.
+  const champsTrajet = { "#reglage-trajet-km": "distanceAllerKm", "#reglage-trajet-min": "dureeAllerMin", "#reglage-trajet-conso": "consoL100" };
+  for (const [selecteur, cle] of Object.entries(champsTrajet)) {
+    $(selecteur).addEventListener("change", (e) => {
+      const v = Number(String(e.target.value).replace(",", "."));
+      const trajet = { ...(etat.reglages.trajet ?? {}) };
+      if (e.target.value !== "" && Number.isFinite(v) && v > 0) trajet[cle] = v;
+      else { delete trajet[cle]; e.target.value = ""; }
+      etat.reglages.trajet = Object.keys(trajet).length ? trajet : null;
+      sauverReglages();
+    });
+  }
   $("#reglage-niveau").addEventListener("change", (e) => {
     etat.reglages.niveau = e.target.value;
     etat.reglages.ventMax = null;
+    etat.reglages.niveauChoisi = true;
     sauverReglages();
     rendreReglages();
     rendreSemaine();

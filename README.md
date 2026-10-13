@@ -4,10 +4,11 @@ PWA météo dédiée au parachutisme au **Paraclub de Namur** (aérodrome de
 Namur/Temploux-Suarlée, EBNM).
 
 La question n'est pas « ça saute ? » mais **« est-ce que ça vaut le
-déplacement ? »** — ce qui n'est pas la même chose depuis Bouillon :
-**113 km, 1h30, sans péage**, soit 226 km, ~3 h et ~34 € de diesel par
-tentative. Une journée orange qu'on tenterait sans réfléchir en habitant à
-15 minutes devient un pari à 34 €.
+déplacement ? »** — ce qui n'est pas la même chose à 15 minutes du
+terrain et à 1h30 de route. Une journée orange qu'on tenterait sans
+réfléchir en voisin devient un pari : des heures et un plein. Chaque
+membre saisit **son** trajet dans les réglages (facultatif, stocké sur son
+téléphone uniquement) ; sans trajet, le conseil reste, sans coût affiché.
 
 L'app affiche donc, pour chaque jour d'ouverture réel du club, le verdict
 selon les **règles écrites** (loi belge, règlement FWCP, par brevet),
@@ -24,7 +25,7 @@ estimée, aucune pondération arbitraire.
 > club ne se prononce — et à savoir **quand décider** : le club publie sa
 > banderole le matin même, dès 7h10.
 
-## Ce que fait l'app (v2.1)
+## Ce que fait l'app (v2.2)
 
 **Écran d'accueil** — l'observation réelle de Charleroi (METAR), puis une
 carte par jour d'ouverture : verdict, fenêtre horaire, nombre de sources

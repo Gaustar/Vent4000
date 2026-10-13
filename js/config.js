@@ -156,25 +156,30 @@ export const SEUILS_COMMUNS = {
 };
 
 // ============================================================
-// TRAJET — Bouillon → Paraclub Namur (Google Maps, sans péage).
-// Le prix du litre est récupéré chaque jour (Statbel, js/carburant.js) ;
-// la valeur ci-dessous n'est qu'un repli.
+// TRAJET — propre à chaque membre, saisi dans les réglages (facultatif).
+// Rien n'est supposé : sans distance, aucun coût n'est affiché ; sans
+// consommation ou sans prix officiel du jour (Statbel, js/carburant.js),
+// le trajet est donné en km et en heures, sans montant.
 // ============================================================
-export const TRAJET = {
-  distanceAllerKm: 113,
-  dureeAllerMin: 90,
-  consoL100: 6,
-  prixCarburantDefaut: 2.50,
-};
+const positif = (v) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
 
-export function coutAllerRetour(prixLitre = null) {
-  const km = TRAJET.distanceAllerKm * 2;
-  const prix = (typeof prixLitre === "number" && prixLitre > 0) ? prixLitre : TRAJET.prixCarburantDefaut;
+/**
+ * @param {{distanceAllerKm?:number, dureeAllerMin?:number, consoL100?:number}|null} trajet
+ * @param {number|null} prixLitre
+ * @returns {{km:number, minutes:number|null, prixLitre:number|null, euros:number|null}|null}
+ */
+export function coutAllerRetour(trajet, prixLitre = null) {
+  const distance = positif(trajet?.distanceAllerKm);
+  if (!distance) return null;
+  const duree = positif(trajet?.dureeAllerMin);
+  const conso = positif(trajet?.consoL100);
+  const prix = positif(prixLitre);
+  const km = distance * 2;
   return {
     km,
-    minutes: TRAJET.dureeAllerMin * 2,
+    minutes: duree ? duree * 2 : null,
     prixLitre: prix,
-    euros: Math.round(km * (TRAJET.consoL100 / 100) * prix),
+    euros: conso && prix ? Math.round(km * (conso / 100) * prix) : null,
   };
 }
 
@@ -186,4 +191,4 @@ export const LIENS = {
   briefing: "https://pro.paraclubnamur.be/fr/meteo",
 };
 
-export const VERSION = "2.1.1";
+export const VERSION = "2.2.0";
