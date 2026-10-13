@@ -2,9 +2,11 @@
 // Vent4000 — « Est-ce que ça vaut le déplacement ? »
 //
 // C'est la question que pose réellement l'app, et elle n'est PAS la même
-// que « ça saute ? ». Depuis Domicile, chaque tentative coûte ~200 km,
-// ~3 h de route et ~30 € de carburant : une journée orange qu'on tenterait
-// sans réfléchir en habitant à 15 minutes devient un pari à ~30 €.
+// que « ça saute ? ». À plus d'une heure de route, chaque tentative coûte
+// des heures et un plein : une journée orange qu'on tenterait sans
+// réfléchir en habitant à 15 minutes devient un pari. Le trajet est celui
+// que le membre a saisi dans ses réglages ; sans trajet, le conseil reste
+// le même mais aucun coût n'est affiché.
 //
 // ⚠ PÉRIMÈTRE. Les seuils météo, eux, sont sourcés (CIR/GDF-05 et RSB
 // FWCP — voir config.js). L'arbitrage « ça vaut le trajet » ne l'est pas
@@ -37,7 +39,7 @@ import { coutAllerRetour } from "./config.js";
 
 /** Fenêtre en dessous de laquelle un retard de créneau suffit à tout perdre. */
 export const DUREE_FENETRE_CONFORTABLE = 3; // heures
-/** Au-delà, la prévision est trop lointaine pour engager ~200 km. */
+/** Au-delà, la prévision est trop lointaine pour engager le trajet. */
 export const ECHEANCE_PLANIFICATION = 3;    // jours
 
 /**
@@ -47,11 +49,17 @@ export const ECHEANCE_PLANIFICATION = 3;    // jours
  * @param {"haute"|"moyenne"|"faible"|"unique"} p.confiance — accord multi-modèle
  * @param {number} p.echeanceJours — 0 = aujourd'hui
  * @param {number|null} p.prixLitre — prix officiel du jour (cf. carburant.js)
- * @returns {{niveau:string, titre:string, detail:string, cout:object}}
+ * @param {object|null} p.trajet — trajet du membre (réglages), ou null
+ * @returns {{niveau:string, titre:string, detail:string, cout:object|null}}
  *   niveau ∈ "partir" | "planifier" | "reconfirmer" | "renoncer"
  */
-export function conseilDeplacement({ verdict, duree = 0, confiance = "unique", echeanceJours = 0, prixLitre = null }) {
-  const cout = coutAllerRetour(prixLitre);
+export function conseilDeplacement({ verdict, duree = 0, confiance = "unique", echeanceJours = 0, prixLitre = null, trajet = null }) {
+  const cout = coutAllerRetour(trajet, prixLitre);
+  // Ce que coûte la tentative, avec ce qui est connu seulement.
+  const enjeu = [
+    cout?.euros != null ? `${cout.euros} €` : null,
+    cout?.minutes != null ? `${Math.round(cout.minutes / 60)} h de route` : null,
+  ].filter(Boolean).join(" et ") || (cout ? `${cout.km} km` : "");
   const aujourdhui = echeanceJours === 0;
   const fenetreConfortable = duree >= DUREE_FENETRE_CONFORTABLE;
   const confianceSolide = confiance === "haute" || confiance === "moyenne";
@@ -98,8 +106,8 @@ export function conseilDeplacement({ verdict, duree = 0, confiance = "unique", e
       niveau: "reconfirmer",
       titre: "Pari ouvert",
       detail: `Sautable mais ${fragilite}. Le club pratique le standby, ` +
-        "donc l'attente sur place fait partie du jeu — c'est à toi de dire si ça vaut les " +
-        `${cout.euros} € et ${Math.round(cout.minutes / 60)} h de route.`,
+        "donc l'attente sur place fait partie du jeu — c'est à toi de dire si ça vaut " +
+        (enjeu ? `les ${enjeu}.` : "le déplacement."),
       cout,
     };
   }
@@ -118,7 +126,7 @@ export function conseilDeplacement({ verdict, duree = 0, confiance = "unique", e
     niveau: "reconfirmer",
     titre: "À surveiller",
     detail: "Créneau plausible mais fragile. Revérifie la veille, puis le matin même " +
-      "avant de faire ~100 km.",
+      "avant de prendre la route.",
     cout,
   };
 }

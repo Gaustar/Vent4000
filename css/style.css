@@ -1,3 +1,14 @@
+/* Polices embarquées (SIL Open Font License 1.1) : aucun appel à un serveur tiers. */
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 400; font-display: swap; src: url("../fonts/barlow-400.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 500; font-display: swap; src: url("../fonts/barlow-500.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-style: normal; font-weight: 600; font-display: swap; src: url("../fonts/barlow-600.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-style: normal; font-weight: 500; font-display: swap; src: url("../fonts/barlow-condensed-500.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-style: normal; font-weight: 600; font-display: swap; src: url("../fonts/barlow-condensed-600.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-style: normal; font-weight: 700; font-display: swap; src: url("../fonts/barlow-condensed-700.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("../fonts/ibm-plex-mono-400.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url("../fonts/ibm-plex-mono-500.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 600; font-display: swap; src: url("../fonts/ibm-plex-mono-600.woff2") format("woff2"); }
+
 /* ============================================================
    Vent4000 v2.0 — Design « instrument de vol »
    ------------------------------------------------------------
@@ -490,6 +501,8 @@ button { font: inherit; color: inherit; }
   background: var(--surface-2); color: var(--encre); border: 1px solid var(--bord-fort);
 }
 .champ-borne { font-size: 12px; color: var(--encre-3); }
+.choix-niveau-boutons { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.choix-niveau-boutons .btn { margin: 0; }
 .legal-texte { margin: 0 0 var(--sp-3); font-size: 13.5px; color: var(--encre-2); }
 .legal-texte:last-child { margin-bottom: 0; }
 .avertissement { margin-top: var(--sp-4); font-size: 13px; color: var(--encre-2); }
@@ -505,3 +518,4 @@ button { font: inherit; color: inherit; }
   .hero-verdict { font-size: 25px; }
   .jauge-valeur { font-size: 32px; }
 }
+.f-na .f-valeur { color: var(--encre-3); }

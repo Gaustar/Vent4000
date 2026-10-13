@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { lirePrix, prixDiesel, PRODUIT_DIESEL } from "./carburant.js";
-import { coutAllerRetour, TRAJET } from "./config.js";
+import { coutAllerRetour } from "./config.js";
+
+const TRAJET = { distanceAllerKm: 113, dureeAllerMin: 90, consoL100: 6 };
 
 // Extrait réel de la réponse Statbel (be.STAT, vue « Tarif officiel des
 // produits pétroliers »), relevé le 2026-09-23. Structure conservée telle
@@ -59,21 +61,22 @@ test("prixDiesel ne jette jamais : réseau HS, HTTP en erreur ou JSON invalide",
   }
 });
 
-test("coutAllerRetour utilise le prix du jour, et retombe sur le repli sinon", () => {
-  const avecPrix = coutAllerRetour(2.501);
+test("coutAllerRetour utilise le prix du jour, et ne chiffre rien sans lui", () => {
+  const avecPrix = coutAllerRetour(TRAJET, 2.501);
   const km = TRAJET.distanceAllerKm * 2;
   assert.equal(avecPrix.prixLitre, 2.501);
   assert.equal(avecPrix.euros, Math.round(km * (TRAJET.consoL100 / 100) * 2.501));
 
   for (const invalide of [null, undefined, 0, -1, "2.5", NaN]) {
-    assert.equal(coutAllerRetour(invalide).prixLitre, TRAJET.prixCarburantDefaut, String(invalide));
+    assert.equal(coutAllerRetour(TRAJET, invalide).prixLitre, null, String(invalide));
+    assert.equal(coutAllerRetour(TRAJET, invalide).euros, null, String(invalide));
   }
 });
 
 test("Un prix plus élevé renchérit bien le trajet", () => {
   // Garde-fou basique contre une inversion de formule : le diesel a pris
   // plus de 40 % en un an, l'app doit suivre dans le bon sens.
-  assert.ok(coutAllerRetour(3.0).euros > coutAllerRetour(2.0).euros);
+  assert.ok(coutAllerRetour(TRAJET, 3.0).euros > coutAllerRetour(TRAJET, 2.0).euros);
 });
 
 test("Le produit visé est bien le diesel routier", () => {

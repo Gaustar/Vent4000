@@ -4,6 +4,35 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [2.2.0] — 2026-10-13
+
+Préparation d'une présentation au club : l'app ne suppose plus rien de
+celui qui l'ouvre. Règles, données et calcul du verdict inchangés.
+
+### Modifié
+- **Trajet propre à chaque membre.** Le trajet Domicile → Temploux codé en
+  dur est remplacé par un réglage facultatif (distance, durée,
+  consommation), conservé sur le téléphone. Sans trajet, le conseil de
+  déplacement reste, sans coût. Chaque élément n'est chiffré que s'il est
+  connu : le prix de repli du carburant (2,50 €/L, valeur fixe) est
+  supprimé — sans prix officiel du jour, pas de montant.
+- **Premier lancement : choix du niveau.** L'app demande le niveau une
+  fois, au lieu d'appliquer « Tandem » en silence. En attendant le choix,
+  le palier le plus strict reste appliqué.
+- **Polices embarquées** (Barlow, Barlow Condensed, IBM Plex Mono — SIL
+  OFL 1.1) : plus aucun appel aux serveurs de Google, typographie correcte
+  dès le premier lancement hors-ligne.
+- Couleurs du manifeste alignées sur le thème.
+
+### Corrigé
+- Vue Jour : une règle qu'aucune source ne renseigne (« Ouverture sous la
+  couche » quand la base des nuages est inconnue) s'affichait « respectée ».
+  Elle s'affiche « sans donnée ». Le verdict n'est pas concerné : dans ce
+  cas la règle du plafond est déjà « non vérifiable » (orange).
+
+### Tests
+80 tests (+ trajet absent ou partiel).
+
 ## [2.1.1] — 2026-10-13
 
 Fiabilité de l'affichage, sans toucher aux règles, aux données ni au calcul

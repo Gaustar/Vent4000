@@ -4,7 +4,7 @@
 // avec repli sur la dernière prévision en cache (mode hors-ligne).
 // ============================================================
 
-const CACHE = "vent4000-v20";
+const CACHE = "vent4000-v21";
 const SHELL = [
   "./",
   "./index.html",
@@ -20,6 +20,15 @@ const SHELL = [
   "./js/scoring.js",
   "./js/tendance.js",
   "./manifest.json",
+  "./fonts/barlow-400.woff2",
+  "./fonts/barlow-500.woff2",
+  "./fonts/barlow-600.woff2",
+  "./fonts/barlow-condensed-500.woff2",
+  "./fonts/barlow-condensed-600.woff2",
+  "./fonts/barlow-condensed-700.woff2",
+  "./fonts/ibm-plex-mono-400.woff2",
+  "./fonts/ibm-plex-mono-500.woff2",
+  "./fonts/ibm-plex-mono-600.woff2",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
 ];
@@ -72,12 +81,12 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Shell + polices : cache d'abord, réseau en secours
+  // Shell (polices comprises) : cache d'abord, réseau en secours
   e.respondWith(
     caches.match(e.request).then((enCache) => {
       if (enCache) return enCache;
       return fetch(e.request).then((rep) => {
-        if (rep.ok && (url.origin === location.origin || url.hostname.includes("gstatic") || url.hostname.includes("googleapis"))) {
+        if (rep.ok && url.origin === location.origin) {
           const copie = rep.clone();
           caches.open(CACHE).then((c) => c.put(e.request, copie));
         }
