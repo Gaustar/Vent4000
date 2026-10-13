@@ -62,9 +62,13 @@ function fetchAvecTimeout(url, delaiMs) {
   return fetch(url, { signal: controleur.signal }).finally(() => clearTimeout(minuteur));
 }
 
-/** Date réelle de la réponse (en-tête HTTP) : l'âge affiché reste vrai hors-ligne. */
+/**
+ * Date réelle de la réponse : l'âge affiché reste vrai hors-ligne. Une
+ * réponse servie depuis le cache porte l'heure de réception posée par le
+ * service worker (l'en-tête `Date` n'est pas lisible en CORS).
+ */
 function dateReponse(rep) {
-  const entete = rep?.headers?.get?.("date");
+  const entete = rep?.headers?.get?.("x-vent4000-recu") ?? rep?.headers?.get?.("date");
   const d = entete ? new Date(entete) : null;
   return d && !Number.isNaN(d.getTime()) ? d : new Date();
 }
@@ -155,6 +159,17 @@ export function normaliser(profil, modeles = new Map()) {
     sunset: profil.daily.sunset[i],
     heures: parJour.get(date) ?? [],
   }));
+}
+
+/** Délai au-delà duquel les données sont rechargées quand l'app est à l'écran. */
+export const RECHARGEMENT_MIN = 15;
+
+/**
+ * Faut-il relancer un chargement ? Compte depuis la dernière TENTATIVE
+ * (réussie ou non) : un réseau en panne n'est pas sollicité en boucle.
+ */
+export function doitRecharger(derniereTentativeMs, maintenantMs = Date.now()) {
+  return maintenantMs - derniereTentativeMs >= RECHARGEMENT_MIN * 60000;
 }
 
 /**

@@ -4,7 +4,7 @@
 // avec repli sur la dernière prévision en cache (mode hors-ligne).
 // ============================================================
 
-const CACHE = "vent4000-v19";
+const CACHE = "vent4000-v20";
 const SHELL = [
   "./",
   "./index.html",
@@ -56,8 +56,14 @@ self.addEventListener("fetch", (e) => {
       fetch(e.request)
         .then((rep) => {
           if (rep.ok) {
+            // L'en-tête HTTP `Date` est illisible en CORS : la copie en cache
+            // porte donc l'heure de réception, pour que l'âge affiché hors-ligne
+            // soit celui des données et non celui de l'ouverture de l'app.
             const copie = rep.clone();
-            caches.open(CACHE).then((c) => c.put(e.request, copie));
+            const entetes = new Headers(copie.headers);
+            entetes.set("x-vent4000-recu", new Date().toISOString());
+            const datee = new Response(copie.body, { status: copie.status, statusText: copie.statusText, headers: entetes });
+            caches.open(CACHE).then((c) => c.put(e.request, datee));
           }
           return rep;
         })
