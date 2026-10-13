@@ -9,7 +9,7 @@ import { ageMetar } from "./metar.js";
 import { comparerPrevisions, doitRemplacerInstantane } from "./tendance.js";
 import { conseilDeplacement } from "./deplacement.js";
 import { prixDiesel } from "./carburant.js";
-import { chargerMeteo, chargerAero, NIVEAUX_PROFIL, NIVEAUX_AGL } from "./meteo.js";
+import { chargerMeteo, chargerAero, doitRecharger, NIVEAUX_PROFIL, NIVEAUX_AGL } from "./meteo.js";
 
 // ------------------------------------------------------------
 // État & réglages
@@ -20,6 +20,8 @@ const CLE_INSTANTANES = "vent4000.instantanes";
 const etat = {
   meteo: null,
   aero: { metar: null, taf: null },
+  aeroCharge: false,        // MET Norway a répondu (ou échoué) au moins une fois
+  echecRechargement: null,  // cause du dernier rechargement raté, sinon null
   jourSelectionne: null,
   heureSelectionnee: null,
   reglages: chargerReglages(),
@@ -789,11 +791,16 @@ function afficherFraicheur() {
     etat.aero.taf ? `TAF ${AERODROME.station}` : null,
     etat.aero.metar ? `METAR ${AERODROME.station}` : null,
   ].filter(Boolean).join(" + ");
+  // Une source absente se dit : le verdict repose alors sur moins de voix.
+  const manquants = etat.aeroCharge
+    ? [etat.aero.taf ? null : "TAF", etat.aero.metar ? null : "METAR"].filter(Boolean) : [];
+  const absents = manquants.length ? ` · ${manquants.join(" et ")} ${AERODROME.station} indisponible${manquants.length > 1 ? "s" : ""}` : "";
+  const echec = etat.echecRechargement ? ` · dernière tentative de mise à jour échouée (${etat.echecRechargement})` : "";
   if (ageMin > AGE_PERIME_MIN) {
     maj.innerHTML = `⚠️ <strong>Prévisions non rafraîchies depuis ${r(ageMin / 60)} h</strong> (dernier succès réseau à ${heureBruxelles(date)}) — vérifie ta connexion avant de te fier au verdict.`;
     maj.classList.add("perime");
   } else {
-    maj.textContent = `${liste} · mis à jour à ${heureBruxelles(date)}`;
+    maj.textContent = `${liste} · mis à jour à ${heureBruxelles(date)}${absents}${echec}`;
     maj.classList.remove("perime");
   }
 }
@@ -801,6 +808,57 @@ function afficherFraicheur() {
 function rafraichirVueCourante() {
   if (!$("#vue-jour").hidden) rendreJour();
   else if (!$("#vue-semaine").hidden) rendreSemaine();
+}
+
+// ------------------------------------------------------------
+// Rechargement : la page reste vivante entre deux ouvertures (TWA/WebAPK),
+// les données sont donc rechargées quand l'app revient à l'écran. Un
+// rechargement réussi équivaut à relancer l'app ; un rechargement raté
+// laisse les données en place, avec leur heure réelle et la cause affichée.
+// ------------------------------------------------------------
+let derniereTentative = 0;
+let rechargementEnCours = false;
+
+async function rechargerDonnees() {
+  if (rechargementEnCours) return;
+  rechargementEnCours = true;
+  derniereTentative = Date.now();
+  try {
+    const [meteo, aero] = await Promise.allSettled([chargerMeteo(), chargerAero()]);
+    if (aero.status === "fulfilled") {
+      etat.aero = aero.value;
+      etat.aeroCharge = true;
+    }
+    if (meteo.status === "fulfilled") {
+      // Le jour affiché est retrouvé par sa date : après minuit, les index glissent.
+      const dateSel = etat.meteo.jours[etat.jourSelectionne]?.date;
+      etat.meteo = meteo.value;
+      etat.echecRechargement = null;
+      if (dateSel) {
+        const index = etat.meteo.jours.findIndex((j) => j.date === dateSel);
+        if (index >= 0) etat.jourSelectionne = index;
+        else {
+          etat.jourSelectionne = null;
+          etat.heureSelectionnee = null;
+          if (!$("#vue-jour").hidden) basculerVue("semaine");
+        }
+      }
+      appliquerTheme();
+    } else {
+      etat.echecRechargement = meteo.reason?.message ?? "erreur réseau";
+    }
+    afficherFraicheur();
+    rafraichirVueCourante();
+  } finally {
+    rechargementEnCours = false;
+  }
+}
+
+/** Remet l'âge des données à jour et recharge si elles ont assez vieilli. */
+function verifierFraicheur() {
+  if (document.hidden || !etat.meteo) return;
+  afficherFraicheur();
+  if (doitRecharger(derniereTentative)) rechargerDonnees();
 }
 
 // ------------------------------------------------------------
@@ -826,6 +884,7 @@ async function init() {
 
   // METAR + TAF lancés tout de suite, branchés dès qu'ils arrivent.
   const aeroPromesse = chargerAero();
+  derniereTentative = Date.now();
 
   try {
     const [meteo, carburant] = await Promise.allSettled([chargerMeteo(), prixDiesel()]);
@@ -838,12 +897,15 @@ async function init() {
     $("#chargement").hidden = true;
     $("#vue-semaine").hidden = false;
 
-    const aero = await aeroPromesse;
-    if (aero.metar || aero.taf) {
-      etat.aero = aero;
-      afficherFraicheur();
-      rafraichirVueCourante();
-    }
+    etat.aero = await aeroPromesse;
+    etat.aeroCharge = true;
+    afficherFraicheur();
+    if (etat.aero.metar || etat.aero.taf) rafraichirVueCourante();
+
+    document.addEventListener("visibilitychange", verifierFraicheur);
+    window.addEventListener("pageshow", verifierFraicheur);
+    window.addEventListener("focus", verifierFraicheur);
+    setInterval(verifierFraicheur, 60000);
   } catch (err) {
     const zone = $("#chargement");
     zone.innerHTML = `

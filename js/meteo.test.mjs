@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chargerMeteo, chargerAero, utcDepuisLocal, lireModeles } from "./meteo.js";
+import { chargerMeteo, chargerAero, utcDepuisLocal, lireModeles, doitRecharger, RECHARGEMENT_MIN } from "./meteo.js";
 
 const HEURES = ["2026-08-22T08:00", "2026-08-22T09:00", "2026-08-22T10:00"];
 
@@ -95,4 +95,28 @@ test("chargerAero : garde le METAR et le TAF les plus récents ; réseau en éch
   } finally { restaurer(); }
   restaurer = installerFetch(async () => { throw new Error("hors ligne"); });
   try { assert.deepEqual(await chargerAero(now), { metar: null, taf: null }); } finally { restaurer(); }
+});
+
+test("doitRecharger : seulement après le délai, compté depuis la dernière tentative", () => {
+  const t0 = Date.UTC(2026, 9, 13, 8, 0);
+  const min = (n) => t0 + n * 60000;
+  assert.equal(doitRecharger(t0, min(0)), false);
+  assert.equal(doitRecharger(t0, min(RECHARGEMENT_MIN - 1)), false);
+  assert.equal(doitRecharger(t0, min(RECHARGEMENT_MIN)), true);
+  // Page restée ouverte toute la nuit : rechargement au retour.
+  assert.equal(doitRecharger(t0, min(14 * 60)), true);
+});
+
+test("chargerMeteo : une réponse servie par le cache garde son heure de réception", async () => {
+  const restaurer = installerFetch(async (url) => {
+    if (String(url).includes("icon_seamless")) return reponseProfil();
+    const rep = reponseModeles();
+    rep.headers.set("x-vent4000-recu", "2026-08-22T05:10:00.000Z");
+    return rep;
+  });
+  try {
+    assert.equal((await chargerMeteo()).recupereLe, "2026-08-22T05:10:00.000Z");
+  } finally {
+    restaurer();
+  }
 });

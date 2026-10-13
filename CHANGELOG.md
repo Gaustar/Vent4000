@@ -4,6 +4,34 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [2.1.1] — 2026-10-13
+
+Fiabilité de l'affichage, sans toucher aux règles, aux données ni au calcul
+du verdict.
+
+### Corrigé
+- **Données figées dans l'app installée.** La météo n'était chargée qu'au
+  démarrage ; dans la TWA, la page reste vivante entre deux ouvertures et
+  pouvait montrer le verdict de la veille, avec un bandeau « mis à jour à… »
+  qui ne passait jamais en alerte. Les données sont maintenant rechargées
+  au retour sur l'app (et toutes les 15 min à l'écran), et l'âge affiché
+  est réévalué chaque minute.
+- Un rechargement raté laisse les données en place, avec leur heure réelle
+  et la cause de l'échec dans le bandeau.
+- Après minuit, le jour ouvert reste le bon (retrouvé par sa date).
+- **Hors-ligne, les données du cache étaient datées de l'instant présent.**
+  L'en-tête HTTP `Date` d'Open-Meteo n'est pas lisible en CORS : l'app
+  retombait sur l'heure courante et l'alerte « non rafraîchies » ne se
+  déclenchait jamais. Le service worker horodate désormais chaque réponse
+  mise en cache.
+
+### Ajouté
+- Le bandeau signale « TAF / METAR EBCI indisponible » quand MET Norway ne
+  répond pas : le verdict repose alors sur les modèles seuls.
+
+### Tests
+78 tests (+ délai de rechargement, heure de réception du cache).
+
 ## [2.1.0] — 2026-10-01
 
 Demande : « aucune spéculation ; se baser sur les plus précises des données
