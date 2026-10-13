@@ -471,6 +471,7 @@ button { font: inherit; color: inherit; }
 /* ---------- Sources, TAF, règles (v2.1) ---------- */
 .cj-accord { display: flex; flex-direction: column; align-items: flex-end; line-height: 1; }
 .cj-accord b { font-family: var(--mono); font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cj-accord .cj-partielles { text-transform: none; letter-spacing: 0; }
 .cj-accord small { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--encre-3); margin-top: 2px; }
 .hero-precision { font-size: 12.5px; color: var(--encre-3); }
 .taf-validite { margin: 6px 0 0; font-size: 12.5px; color: var(--encre-3); }

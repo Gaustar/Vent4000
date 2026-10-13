@@ -17,8 +17,9 @@
 //    appelante, donc elle est utilisable directement depuis la PWA sur
 //    GitHub Pages, sans proxy ni clé d'API. Vérifié le 2026-09-23.
 //
-// Le prix est un BONUS : toute panne (réseau, format, hors-ligne) retombe
-// silencieusement sur la valeur de config.js. Jamais bloquant.
+// Le prix est un BONUS : en cas de panne (réseau, format, hors-ligne), le
+// dernier prix officiel connu est repris ; à défaut, aucun montant n'est
+// affiché. Jamais bloquant, jamais de prix supposé.
 // ============================================================
 
 const VUE_STATBEL = "9e9cf394-6c54-4d81-8013-7124a8c4bf15";
@@ -28,6 +29,19 @@ const DELAI_MS = 8000;
 
 /** Produit exact dans le jeu de données Statbel. */
 export const PRODUIT_DIESEL = "Diesel B7 (€/L)";
+
+/** Carburants proposés dans les réglages (libellés exacts Statbel). */
+export const CARBURANTS = {
+  diesel: { label: "Diesel (B7)", produit: PRODUIT_DIESEL },
+  e10: { label: "Essence 95 (E10)", produit: "Essence 95 RON E10 (€/L)" },
+  e5: { label: "Essence 98 (E5)", produit: "Essence 98 RON E5 (€/L)" },
+};
+
+/** Prix officiel du carburant choisi, ou null s'il n'est pas connu. */
+export function prixPour(carburant, type = "diesel") {
+  const prix = carburant?.tous?.[type] ?? (type === "diesel" ? carburant?.prix : null);
+  return typeof prix === "number" && prix > 0 ? prix : null;
+}
 
 /**
  * Extrait le prix TTC d'un produit depuis la réponse Statbel.
@@ -57,14 +71,14 @@ function ecrireCache(valeur) {
 
 /**
  * Prix du diesel du jour, avec repli en cascade :
- * réseau → cache local (dernier prix connu) → null (l'appelant retombe
- * alors sur la valeur de config.js).
+ * réseau → cache local (dernier prix connu) → null (aucun montant affiché).
+ * `tous` porte le prix de chaque carburant proposé (cf. CARBURANTS).
  *
  * Le cache sert surtout au mode hors-ligne : le prix officiel ne change
  * qu'une fois par jour, une valeur de la veille reste pertinente pour
  * estimer un plein, contrairement à une prévision météo périmée.
  *
- * @returns {Promise<{prix:number, jour:string|null, source:"statbel"|"cache"}|null>}
+ * @returns {Promise<{prix:number, jour:string|null, tous:object, source:"statbel"|"cache"}|null>}
  */
 export async function prixDiesel(fetchImpl = fetch) {
   const controleur = new AbortController();
@@ -72,9 +86,11 @@ export async function prixDiesel(fetchImpl = fetch) {
   try {
     const rep = await fetchImpl(URL_STATBEL, { signal: controleur.signal });
     if (!rep.ok) throw new Error(`HTTP ${rep.status}`);
-    const lu = lirePrix(await rep.json());
+    const donnees = await rep.json();
+    const lu = lirePrix(donnees);
     if (!lu) throw new Error("produit introuvable");
-    const valeur = { ...lu, source: "statbel" };
+    const tous = Object.fromEntries(Object.entries(CARBURANTS).map(([cle, c]) => [cle, lirePrix(donnees, c.produit)?.prix ?? null]));
+    const valeur = { ...lu, tous, source: "statbel" };
     ecrireCache(valeur);
     return valeur;
   } catch {

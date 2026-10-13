@@ -62,7 +62,7 @@ test("METAR sans groupe de rafale ni de temps présent = pas de rafale significa
 test("Toutes les sources 2 km conformes -> vert, 5/5", () => {
   const s = scoreHeure(heure(tousHR(() => calme())), TANDEM, { maintenant: NOW });
   assert.equal(s.verdict, "vert");
-  assert.deepEqual(s.accord, { favorables: 5, total: 5 });
+  assert.deepEqual(s.accord, { favorables: 5, partielles: 0, total: 5 });
   assert.equal(s.precision, "hr");
 });
 
@@ -154,4 +154,26 @@ test("fenetreSautable : plus longue plage verte ; une heure isolée ne fait pas 
     { verdict: "vert", debut: 12, fin: 15, duree: 3 });
   assert.equal(fenetreSautable([h(18, "vert")]).verdict, "rouge");
   assert.equal(fenetreSautable([h(9, "vert"), h(11, "vert")]).verdict, "rouge", "trou entre les heures");
+});
+
+test("Source partielle : favorable mais sans toutes les données légales -> comptée à part", () => {
+  // Trois modèles 2 km ; l'un annonce une couche basse sans en fournir la
+  // base, un autre n'a pas de visibilité : ils ne contredisent rien, mais
+  // ne valident pas tout.
+  const modeles = {
+    icon_d2: calme({ nuagesBas: 90, base: null }),
+    meteofrance_arome_france_hd: calme({ visibilite: null }),
+    dmi_harmonie_arome_europe: calme(),
+  };
+  const s = scoreHeure(heure(modeles), TANDEM, { maintenant: NOW });
+  assert.deepEqual(s.accord, { favorables: 3, partielles: 2, total: 3 });
+  assert.equal(s.verdict, "vert", "une source complète suffit à vérifier chaque règle");
+  const par = Object.fromEntries(s.sources.map((x) => [x.id, x.partielle]));
+  assert.deepEqual(par, { meteofrance_arome_france_hd: true, icon_d2: true, dmi_harmonie_arome_europe: false });
+});
+
+test("Une source en échec n'est jamais « partielle »", () => {
+  const s = scoreHeure(heure({ icon_d2: calme({ rafales: 40, visibilite: null }), dmi_harmonie_arome_europe: calme() }), TANDEM, { maintenant: NOW });
+  assert.deepEqual(s.accord, { favorables: 1, partielles: 0, total: 2 });
+  assert.equal(s.sources.find((x) => x.id === "icon_d2").partielle, false);
 });

@@ -8,7 +8,7 @@ import { scoreHeure, fenetreSautable, meilleurVerdict, ventPiste } from "./scori
 import { ageMetar } from "./metar.js";
 import { comparerPrevisions, doitRemplacerInstantane } from "./tendance.js";
 import { conseilDeplacement } from "./deplacement.js";
-import { prixDiesel } from "./carburant.js";
+import { prixDiesel, prixPour, CARBURANTS } from "./carburant.js";
 import { chargerMeteo, chargerAero, doitRecharger, NIVEAUX_PROFIL, NIVEAUX_AGL } from "./meteo.js";
 
 // ------------------------------------------------------------
@@ -368,6 +368,11 @@ function texteAccord(a) {
   return a ? `${a.favorables}/${a.total}` : "—";
 }
 
+/** « dont 2 partielles » : sources favorables qui ne fournissent pas toutes les données légales. */
+function textePartielles(a) {
+  return a?.partielles ? `dont ${a.partielles} partielle${a.partielles > 1 ? "s" : ""}` : "";
+}
+
 function rendreSemaine() {
   const jours = joursOuvertsScores();
   $("#niveau-actif").textContent = seuilsActifs().label;
@@ -391,7 +396,7 @@ function rendreSemaine() {
     const fenetre = texteFenetre(j.meilleureFenetre);
     const bande = j.heures.map(({ h, score }) => {
       const hauteur = score.accord.total ? Math.max(12, r((score.accord.favorables / score.accord.total) * 100)) : 100;
-      return `<span class="bande-h ${score.verdict}" title="${h.heure}h · ${VERDICT_TEXTE[score.verdict]} · ${texteAccord(score.accord)} sources favorables">
+      return `<span class="bande-h ${score.verdict}" title="${h.heure}h · ${VERDICT_TEXTE[score.verdict]} · ${texteAccord(score.accord)} sources favorables ${textePartielles(score.accord)}">
         <i style="height:${hauteur}%"></i><em>${h.heure % 2 === 0 ? h.heure : ""}</em></span>`;
     }).join("");
 
@@ -404,7 +409,7 @@ function rendreSemaine() {
           ${j.precision !== "hr" ? `<span class="etiq-jour">${j.precision === "regional" ? "Modèles 7-10 km" : "En partie 7-10 km"}</span>` : ""}
           ${rendreTendance(j.tendance)}
         </span>
-        ${j.accordFenetre ? `<span class="cj-accord"><b>${texteAccord(j.accordFenetre)}</b><small>sources</small></span>` : ""}
+        ${j.accordFenetre ? `<span class="cj-accord"><b>${texteAccord(j.accordFenetre)}</b><small>sources</small>${j.accordFenetre.partielles ? `<small class="cj-partielles">${textePartielles(j.accordFenetre)}</small>` : ""}</span>` : ""}
       </span>
       <span class="cj-verdict">
         <span class="cj-symbole" aria-hidden="true">${VERDICT_SYMBOLE[j.verdictJour]}</span>
@@ -415,7 +420,7 @@ function rendreSemaine() {
       <span class="bande" aria-hidden="true">${bande}</span>`;
     carte.setAttribute("aria-label",
       `${JOURS_FR[j.date.getDay()]} ${j.date.getDate()} — ${VERDICT_TEXTE[j.verdictJour]}` +
-      `${fenetre ? `, ${fenetre}` : ""}${j.accordFenetre ? `, ${texteAccord(j.accordFenetre)} sources favorables` : ""}`);
+      `${fenetre ? `, ${fenetre}` : ""}${j.accordFenetre ? `, ${texteAccord(j.accordFenetre)} sources favorables ${textePartielles(j.accordFenetre)}` : ""}`);
     carte.addEventListener("click", () => ouvrirJour(j.index));
     conteneur.appendChild(carte);
   }
@@ -441,7 +446,8 @@ function ouvrirJour(index) {
 }
 
 function rendreDeplacement(el, params) {
-  const c = conseilDeplacement({ ...params, prixLitre: etat.carburant?.prix ?? null, trajet: etat.reglages.trajet });
+  const type = CARBURANTS[etat.reglages.trajet?.carburant] ? etat.reglages.trajet.carburant : "diesel";
+  const c = conseilDeplacement({ ...params, prixLitre: prixPour(etat.carburant, type), trajet: etat.reglages.trajet });
   // Le trajet est celui du membre (réglages) : rien n'est affiché sans lui,
   // et chaque élément seulement s'il est connu.
   let cout = "";
@@ -452,7 +458,7 @@ function rendreDeplacement(el, params) {
       c.cout.euros != null ? `~${c.cout.euros} €` : null,
     ].filter(Boolean).join(" · ");
     const origine = etat.carburant?.source === "statbel" ? "prix officiel du jour" : "dernier prix officiel connu";
-    const titre = c.cout.euros != null ? ` title="Diesel B7 à ${c.cout.prixLitre.toFixed(3)} €/L — ${origine}"` : "";
+    const titre = c.cout.euros != null ? ` title="${CARBURANTS[type].label} à ${c.cout.prixLitre.toFixed(3)} €/L — ${origine}"` : "";
     cout = `<span class="dep-cout"${titre}>${parties}</span>`;
   }
   el.className = `deplacement dep-${c.niveau}`;
@@ -513,7 +519,7 @@ function rendreJour() {
     + `<br><span class="hero-precision">Données : ${info.precision === "hr" ? PRECISION_TEXTE.hr + (info.heures.some((x) => x.score.sources.some((src) => src.type === "taf")) ? " + TAF Charleroi" : "") : info.precision === "regional" ? PRECISION_TEXTE.regional + " (moins précis)" : "1,3-2,2 km puis 7-10 km"}</span>`;
   $("#jour-jauge").innerHTML = info.accordFenetre ? `
     <span class="jauge-valeur">${texteAccord(info.accordFenetre)}</span>
-    <span class="jauge-label">sources<br>favorables</span>` : "";
+    <span class="jauge-label">sources<br>favorables${info.accordFenetre.partielles ? `<br>${textePartielles(info.accordFenetre)}` : ""}</span>` : "";
 
   $("#jour-creneaux").innerHTML = info.creneaux
     .map((c) => {
@@ -632,7 +638,7 @@ function rendreDetailHeure({ h, score }, seuils) {
   const classe = score.verdict === "rouge" ? "bloquant" : "degradant";
   $("#raisons").innerHTML = score.raisons.length
     ? score.raisons.map((x) => `<li class="${classe}">${echapper(x)}</li>`).join("")
-    : `<li class="ok">Toutes les règles respectées pour « ${echapper(seuils.label)} » (${texteAccord(score.accord)} sources favorables)</li>`;
+    : `<li class="ok">Toutes les règles respectées pour « ${echapper(seuils.label)} » (${[`${texteAccord(score.accord)} sources favorables`, textePartielles(score.accord)].filter(Boolean).join(", ")})</li>`;
 
   // Règles, avec leur source réglementaire.
   $("#facteurs").innerHTML = score.regles.map((x) => `
@@ -652,7 +658,7 @@ function rendreDetailHeure({ h, score }, seuils) {
 function rendreSources(score) {
   const ligne = (s) => {
     const c = s.conditions;
-    const ok = Object.values(s.resultats).every((res) => res.statut === "ok" || res.statut === "inconnu");
+    const ok = s.favorable;
     const enEchec = Object.values(s.resultats).some((res) => res.statut === "echec");
     const raf = c.rafales ?? (c.rafalesAbsentesSignifientCalme ? c.vent : null);
     const plafond = c.plafond != null ? court(c.plafond) : c.coucheBasse ? "?" : c.plafondAuMoins ? ">2k" : "—";
@@ -662,7 +668,7 @@ function rendreSources(score) {
       <td>${c.vent != null ? r(c.vent) : "—"}</td><td>${raf != null ? r(raf) : "—"}</td>
       <td>${plafond}</td><td>${c.visibilite != null ? court(Math.min(c.visibilite, 99000)) : "—"}</td>
       <td>${tempsCourt(c) ?? "—"}</td>
-      <td class="src-verdict">${ok ? "✓" : enEchec ? "✕" : "▲"}</td></tr>`;
+      <td class="src-verdict">${s.partielle ? "~" : ok ? "✓" : enEchec ? "✕" : "▲"}</td></tr>`;
   };
   const taf = score.sources.find((s) => s.type === "taf");
   const variantes = taf?.variantes?.length
@@ -676,6 +682,7 @@ function rendreSources(score) {
     ${variantes}
     <p class="note-hypotheses">Vent en km/h, distances en m (k = km). Plafond « &gt;2k » : le modèle ne prévoit aucune couche ≥ 5/8 sous 2 km ;
       « ? » : couche basse ≥ 5/8 dont le modèle ne fournit pas la base (non estimée).
+      « ~ » : source partielle — elle ne contredit aucune règle, mais ne fournit pas toutes les données légales (base des nuages ou visibilité).
       ${score.precision === "regional" ? "<br><strong>Hors portée des modèles 1,3-2,2 km : seuls les modèles régionaux (7-10 km) couvrent cette heure.</strong>" : ""}
       ${absents.length && score.precision !== "regional" ? `<br>Non utilisés à cette heure : ${absents.map((m) => m.nom).join(", ")} (${score.sources.some((s) => s.hr) ? "moins précis ou hors portée" : "hors portée"}).` : ""}</p>`;
 }
@@ -762,6 +769,8 @@ function rendreReglages() {
   $("#reglage-trajet-km").value = t.distanceAllerKm ?? "";
   $("#reglage-trajet-min").value = t.dureeAllerMin ?? "";
   $("#reglage-trajet-conso").value = t.consoL100 ?? "";
+  $("#reglage-trajet-carburant").innerHTML = Object.entries(CARBURANTS)
+    .map(([cle, c]) => `<option value="${cle}"${cle === (t.carburant ?? "diesel") ? " selected" : ""}>${c.label}</option>`).join("");
 }
 
 function brancherReglages() {
@@ -786,6 +795,13 @@ function brancherReglages() {
       sauverReglages();
     });
   }
+  $("#reglage-trajet-carburant").addEventListener("change", (e) => {
+    const trajet = { ...(etat.reglages.trajet ?? {}) };
+    if (CARBURANTS[e.target.value] && e.target.value !== "diesel") trajet.carburant = e.target.value;
+    else delete trajet.carburant;
+    etat.reglages.trajet = Object.keys(trajet).length ? trajet : null;
+    sauverReglages();
+  });
   $("#reglage-niveau").addEventListener("change", (e) => {
     etat.reglages.niveau = e.target.value;
     etat.reglages.ventMax = null;

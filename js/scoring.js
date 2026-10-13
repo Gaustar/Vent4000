@@ -75,7 +75,7 @@ export function sourcesHeure(h, seuils, aero = {}) {
  * @param {object} h — heure normalisée (meteo.js)
  * @param {object} seuils — { ventMax, plafondMin, hauteurOuverture, label }
  * @param {{metar?, taf?, maintenant?}} aero
- * @returns {{verdict, raisons:string[], regles:Array, sources:Array, precision:"obs"|"hr"|"regional"|"aucune", accord:{favorables:number, total:number}}}
+ * @returns {{verdict, raisons:string[], regles:Array, sources:Array, precision:"obs"|"hr"|"regional"|"aucune", accord:{favorables:number, partielles:number, total:number}}}
  */
 export function scoreHeure(h, seuils, aero = {}) {
   const sources = sourcesHeure(h, seuils, aero);
@@ -132,14 +132,23 @@ export function scoreHeure(h, seuils, aero = {}) {
   const verdict = violees.length ? "rouge" : douteuses.length ? "orange" : "vert";
   const raisons = (violees.length ? violees : douteuses).map((x) => `${x.label} — ${x.detail}`);
 
-  // Accord global : sources dont TOUTES les règles sont respectées.
+  // Accord global : sources qui ne contredisent aucune règle. Parmi elles,
+  // une source est « partielle » si elle ne fournit pas la donnée d'une
+  // condition légale (base d'une couche basse, visibilité…) : elle ne
+  // contredit rien, mais elle ne valide pas tout non plus.
   const evaluees = obs ? [obs] : voix;
-  const favorables = evaluees.filter((s) => Object.values(s.resultats).every((res) => res.statut === "ok" || res.statut === "inconnu")).length;
+  for (const s of sources) {
+    const res = Object.entries(s.resultats);
+    s.favorable = res.every(([, x]) => x.statut === "ok" || x.statut === "inconnu");
+    s.partielle = s.favorable && res.some(([id, x]) => x.statut === "inconnu" && REGLES_OBLIGATOIRES.has(id));
+  }
+  const favorables = evaluees.filter((s) => s.favorable).length;
+  const partielles = evaluees.filter((s) => s.partielle).length;
 
   const precision = obs ? "obs"
     : voix.some((s) => s.type === "taf" || s.hr) ? "hr"
     : voix.length ? "regional" : "aucune";
-  return { verdict, raisons, regles, sources, precision, accord: { favorables, total: evaluees.length } };
+  return { verdict, raisons, regles, sources, precision, accord: { favorables, partielles, total: evaluees.length } };
 }
 
 /**
