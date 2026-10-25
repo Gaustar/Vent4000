@@ -39,17 +39,47 @@
       <p class="chargement-detail">Modèles 1,3-2,2 km · TAF et METAR de Charleroi</p>
     </div>
 
+    <!-- ============ Bienvenue (premier lancement) ============ -->
+    <section id="vue-bienvenue" class="bienvenue" hidden>
+      <h2 class="titre-vue">Bienvenue</h2>
+      <p class="legal-texte">Trois questions, et l'app devient la tienne. Tes réponses restent
+        sur ton téléphone : aucun compte, rien n'est envoyé.</p>
+      <div class="bloc">
+        <label class="champ">
+          <span>Ton prénom <em>facultatif</em></span>
+          <input id="bv-prenom" type="text" maxlength="30" autocomplete="given-name" enterkeyhint="next">
+        </label>
+        <div class="champ" role="group" aria-labelledby="bv-niveau-titre">
+          <span id="bv-niveau-titre">Ton niveau</span>
+          <div id="bv-niveaux" class="choix-segment"></div>
+          <small class="champ-borne">La limite de vent et l'altitude d'ouverture en dépendent
+            (RSB FWCP §3.4.2, §3.5, §6.4.1).</small>
+        </div>
+        <label class="champ">
+          <span>Ton nombre de sauts <em>facultatif</em></span>
+          <input id="bv-sauts" type="number" min="0" max="100000" step="1" inputmode="numeric">
+          <small class="champ-borne">Le club fixe parfois un nombre de sauts minimum : l'app te le rappellera.
+            Il ne change jamais le verdict.</small>
+        </label>
+        <div class="actions">
+          <button id="bv-ok" class="btn" disabled>C'est parti</button>
+          <button id="bv-passer" class="btn secondaire">Passer</button>
+        </div>
+        <small class="champ-borne">« Passer » applique la limite la plus stricte (palier tandem et élèves).</small>
+      </div>
+    </section>
+
     <!-- ============ Vue Semaine ============ -->
     <section id="vue-semaine" hidden>
-      <div id="obs" class="obs" hidden></div>
-      <div id="club" class="obs club" hidden></div>
+      <p id="salut" class="salut" hidden></p>
 
-      <div id="choix-niveau" class="bloc choix-niveau" hidden>
-        <h2 class="etiquette">Quel est ton niveau ?</h2>
-        <p class="legal-texte">La limite de vent et l'altitude d'ouverture en dépendent
-          (RSB FWCP §3.4.2, §3.5, §6.4.1). En attendant ton choix, le palier le plus
-          strict est appliqué.</p>
-        <div id="choix-niveau-boutons" class="choix-niveau-boutons"></div>
+      <button id="reponse" class="reponse" hidden></button>
+
+      <h2 class="etiquette">Maintenant</h2>
+      <div class="maintenant">
+        <div id="mt-club" class="mt-ligne" hidden></div>
+        <div id="mt-obs" class="mt-ligne" hidden></div>
+        <div id="mt-avion" class="mt-ligne"></div>
       </div>
 
       <h2 class="etiquette">Jours d'ouverture
@@ -58,7 +88,7 @@
       <p id="note-calendrier" class="note-maj"></p>
 
       <a id="lien-briefing" class="lien-bloc" target="_blank" rel="noopener">
-        <span class="lien-bloc-texte"><strong>Page météo du club</strong> — état des activités, limite de sauts, vrais jours d'ouverture</span>
+        <span class="lien-bloc-texte"><strong>Page météo du club</strong> — limite de sauts (membres), état des activités</span>
         <span class="lien-bloc-fleche" aria-hidden="true">↗</span>
       </a>
 
@@ -83,6 +113,8 @@
           <div class="hero-jauge" id="jour-jauge"></div>
         </div>
         <div id="jour-creneaux" class="creneaux"></div>
+        <ul id="jour-pourquoi" class="pourquoi" hidden></ul>
+        <p id="jour-marge" class="hero-precision" hidden></p>
         <div id="jour-deplacement" class="deplacement" hidden></div>
         <p id="jour-experience" class="avert-experience" hidden></p>
       </article>
@@ -96,7 +128,7 @@
       </div>
       <p class="legende">
         <span class="lg lg-ok"></span>ok <span class="lg lg-limite"></span>limite
-        <span class="lg lg-bloquant"></span>bloquant · vents en km/h, distances en m (k = km)
+        <span class="lg lg-bloquant"></span>bloquant · vents en <span id="legende-unite">km/h</span>, distances en m (k = km)
       </p>
 
       <div class="bloc" id="detail-heure" tabindex="-1">
@@ -135,27 +167,44 @@
       <button id="btn-reglages-retour" class="btn-retour">← Semaine</button>
       <h2 class="titre-vue">Réglages</h2>
 
-      <div class="bloc">
+      <details class="section" open>
+        <summary>Moi</summary>
+        <label class="champ">
+          <span>Prénom <em>facultatif</em></span>
+          <input id="reglage-prenom" type="text" maxlength="30" autocomplete="given-name">
+        </label>
         <label class="champ">
           <span>Niveau de pratique</span>
           <select id="reglage-niveau"></select>
         </label>
-
         <label class="champ">
-          <span>Vent max personnel <em>km/h</em></span>
-          <input id="reglage-vent" type="number" min="5" max="46" step="1" inputmode="numeric">
+          <span>Nombre de sauts <em>facultatif</em></span>
+          <input id="reglage-sauts" type="number" min="0" max="100000" step="1" inputmode="numeric">
+          <small class="champ-borne">À mettre à jour toi-même. Affiché les jours limites, à côté du lien
+            vers la limite de sauts du club ; il ne change jamais le verdict.</small>
+        </label>
+      </details>
+
+      <details class="section">
+        <summary>Mes jours</summary>
+        <p class="legal-texte">Les jours où tu peux venir. La réponse en haut de l'accueil ne propose
+          que ceux-là ; les autres restent visibles, en retrait.</p>
+        <div id="reglage-jours" class="jours-choix"></div>
+      </details>
+
+      <details class="section">
+        <summary>Ma prudence</summary>
+        <label class="champ">
+          <span>Marge sous la limite de mon brevet <em id="reglage-marge-unite">km/h</em></span>
+          <input id="reglage-marge" type="number" min="0" max="20" step="1" inputmode="numeric">
           <small class="champ-borne" id="reglage-vent-borne"></small>
         </label>
-
         <ul id="reglage-resume" class="resume-regles"></ul>
+      </details>
 
-        <button id="reglage-reset" class="btn secondaire">Revenir à la limite du règlement</button>
-      </div>
-
-      <div class="bloc">
-        <h3 class="etiquette">Mon trajet <span class="hint">facultatif, sans effet sur le verdict</span></h3>
-        <p class="legal-texte">Pour chiffrer ce que coûte un déplacement pour rien. Ces valeurs
-          restent sur ton téléphone.</p>
+      <details class="section">
+        <summary>Mon trajet <span class="hint">facultatif, sans effet sur le verdict</span></summary>
+        <p class="legal-texte">Pour chiffrer ce que coûte un déplacement pour rien.</p>
         <label class="champ">
           <span>Distance aller <em>km</em></span>
           <input id="reglage-trajet-km" type="number" min="1" max="1000" step="1" inputmode="numeric">
@@ -174,10 +223,53 @@
           <small class="champ-borne">Le montant utilise le prix officiel du jour (Statbel) ;
             laisse la consommation vide pour n'afficher que les kilomètres et la durée.</small>
         </label>
-      </div>
+      </details>
 
-      <div class="bloc">
-        <h3 class="etiquette">Comment le verdict est calculé</h3>
+      <details class="section">
+        <summary>Affichage</summary>
+        <div class="champ" role="group" aria-labelledby="reglage-theme-titre">
+          <span id="reglage-theme-titre">Thème</span>
+          <div id="reglage-theme" class="choix-segment"></div>
+        </div>
+        <div class="champ" role="group" aria-labelledby="reglage-unite-titre">
+          <span id="reglage-unite-titre">Unité du vent</span>
+          <div id="reglage-unite" class="choix-segment"></div>
+          <small class="champ-borne">Change l'affichage seulement : les règles restent celles des textes
+            (25 kts = 46 km/h ; 7 m/s = 25 km/h).</small>
+        </div>
+      </details>
+
+      <details class="section">
+        <summary>Changer d'appareil</summary>
+        <p class="legal-texte">Ton profil tient dans un code. Copie-le, puis colle-le sur ton autre
+          téléphone. Aucun serveur ne le voit passer.</p>
+        <div class="actions">
+          <button id="reglage-exporter" class="btn secondaire">Copier mon code</button>
+        </div>
+        <label class="champ">
+          <span>Coller un code</span>
+          <textarea id="reglage-code" rows="3" spellcheck="false" autocomplete="off"></textarea>
+        </label>
+        <div class="actions">
+          <button id="reglage-importer" class="btn secondaire">Importer</button>
+          <button id="reglage-effacer" class="btn secondaire danger">Tout effacer</button>
+        </div>
+        <p id="reglage-message" class="champ-borne" role="status"></p>
+      </details>
+
+      <details class="section">
+        <summary>Vie privée</summary>
+        <p class="legal-texte"><strong>Aucune donnée personnelle ne quitte ton téléphone.</strong>
+          Ton prénom, ton niveau, ton nombre de sauts et ton trajet sont enregistrés dans ce
+          navigateur seulement. Pas de compte, pas de publicité, pas de mesure d'audience.</p>
+        <p class="legal-texte">Pour les données, l'app interroge sans aucun identifiant : Open-Meteo
+          (prévisions), MET Norway (METAR et TAF de Charleroi), Statbel (prix du carburant) et un
+          relais qui lit la page météo publique du club et les positions ADS-B publiques de l'avion
+          (adsb.lol, adsb.fi). Ces services voient ton adresse IP, comme pour toute page web.</p>
+      </details>
+
+      <details class="section">
+        <summary>Comment le verdict est calculé</summary>
         <p class="legal-texte">
           <strong>Aucune spéculation.</strong> Seules des règles écrites (ci-dessous) sont
           appliquées, et seulement à des données mesurées ou prévues — jamais estimées.
@@ -207,10 +299,10 @@
           le vent moyen ou sur la rafale ; par prudence, l'app l'applique aux deux.
           Un jour est sautable s'il offre au moins 2 h consécutives.
         </p>
-      </div>
+      </details>
 
-      <div class="bloc bloc-legal">
-        <h3 class="etiquette">Cadre réglementaire</h3>
+      <details class="section">
+        <summary>Cadre réglementaire</summary>
         <p class="legal-texte">
           <strong>1. Loi belge</strong> — circulaire <strong>CIR/GDF-05</strong> Éd. 4
           (03/06/2016), DGTA / SPF Mobilité, §6 : visibilité ≥ 3000 m,
@@ -230,7 +322,7 @@
           <strong>3. Club</strong> — le responsable technique peut durcir ces limites
           et décide seul de l'ouverture des sauts.
         </p>
-      </div>
+      </details>
 
       <p class="avertissement">
         ⚠ Outil d'aide à la décision, sans valeur officielle.
@@ -245,7 +337,7 @@
       <a id="lien-windy" target="_blank" rel="noopener">Windy</a>
       <a id="lien-club" target="_blank" rel="noopener">Paraclub</a>
     </nav>
-    <p class="pied-note">Open-Meteo · MET Norway (METAR/TAF) · outil personnel, sans valeur officielle · <span id="version"></span></p>
+    <p class="pied-note">Open-Meteo · MET Norway (METAR/TAF) · ADS-B adsb.lol (ODbL) · outil indépendant, sans valeur officielle · <span id="version"></span></p>
   </footer>
 
   <script type="module" src="./js/app.js"></script>

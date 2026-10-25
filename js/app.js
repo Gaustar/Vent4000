@@ -2,8 +2,11 @@
 // Vent4000 — Application (UI) v2.4
 // ============================================================
 
-import { DZ, NIVEAUX_PRATIQUE, LIENS, RELAIS_CLUB, VERSION, LEGAL_BE, AERODROME, MODELES } from "./config.js";
-import { ouvertureReelle, fermeParLeClub } from "./ouverture.js";
+import { DZ, NIVEAUX_PRATIQUE, LIENS, RELAIS_CLUB, RELAIS_AVION, VERSION, LEGAL_BE, AERODROME, MODELES } from "./config.js";
+import { ouvertureReelle, fermeParLeClub, estFerie } from "./ouverture.js";
+import { normaliserProfil, ventMaxEffectif, jourDisponible, convertirVent, exporterProfil, importerProfil,
+  UNITES_VENT, THEMES, JOURS_SEMAINE, MARGE_MAX } from "./profil.js";
+import { phaseVol, distanceKm, relevement, RAYON_KM, SIGNAL_PERIME_S } from "./avion.js";
 import { chargerClub } from "./club.js";
 import { scoreHeure, fenetreSautable, meilleurVerdict, ventPiste } from "./scoring.js";
 import { ageMetar } from "./metar.js";
@@ -29,19 +32,16 @@ const etat = {
   instantanes: chargerInstantanes(),
   carburant: null,
   club: null,               // page météo publique du club, via le relais (club.js)
+  avion: null,              // avion(s) de largage près du terrain, via le relais (avion.js)
+  traces: new Map(),        // hex → positions reçues depuis l'ouverture de l'app
 };
 
+/** Profil du membre (js/profil.js) : migré et validé à la lecture. */
 function chargerReglages() {
-  // `niveauChoisi` : faux au tout premier lancement, tant que le membre n'a
-  // pas indiqué son niveau (le palier le plus strict s'applique en attendant).
-  const defauts = { niveau: "tandem", ventMax: null, trajet: null, niveauChoisi: false };
   try {
-    const brut = localStorage.getItem(CLE_REGLAGES);
-    const lu = { ...defauts, niveauChoisi: !!brut, ...JSON.parse(brut || "{}") };
-    if (!NIVEAUX_PRATIQUE[lu.niveau]) lu.niveau = "tandem";
-    return lu;
+    return normaliserProfil(JSON.parse(localStorage.getItem(CLE_REGLAGES) || "null"));
   } catch {
-    return defauts;
+    return normaliserProfil(null);
   }
 }
 
@@ -62,17 +62,18 @@ function sauverInstantanes() {
 }
 
 /**
- * Seuils effectifs : ceux du règlement pour le niveau choisi. Le seul
- * réglage personnel possible est un vent max PLUS STRICT (le RSB autorise
- * le RT à durcir, jamais à assouplir) : il est borné ici au palier du brevet.
+ * Seuils effectifs : ceux du règlement pour le niveau choisi, moins la
+ * marge personnelle éventuelle (le RSB autorise à durcir, jamais à
+ * assouplir : ventMaxEffectif ne dépasse jamais le palier du brevet).
  */
 function seuilsActifs() {
   const base = NIVEAUX_PRATIQUE[etat.reglages.niveau] ?? NIVEAUX_PRATIQUE.tandem;
-  const perso = etat.reglages.ventMax;
+  const ventMax = ventMaxEffectif(etat.reglages);
   return {
     label: base.label,
-    ventMax: perso != null ? Math.min(perso, base.ventMax) : base.ventMax,
+    ventMax,
     ventMaxReglement: base.ventMax,
+    marge: base.ventMax - ventMax,
     plafondMin: base.plafondMin,
     hauteurOuverture: base.hauteurOuverture,
     sourceOuverture: base.sourceOuverture,
@@ -86,6 +87,7 @@ const $ = (sel) => document.querySelector(sel);
 const r = Math.round;
 
 const JOURS_FR = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
+const JOURS_COURTS = ["Dim.", "Lun.", "Mar.", "Mer.", "Jeu.", "Ven.", "Sam."];
 const MOIS_FR = ["janv.", "févr.", "mars", "avril", "mai", "juin",
                  "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 
@@ -97,6 +99,13 @@ const PRECISION_TEXTE = {
   hr: "modèles 1,3-2,2 km",
   regional: "modèles régionaux 7-10 km",
   aucune: "aucune donnée",
+};
+
+/** Vent (km/h en interne) dans l'unité du membre ; les seuils ne changent pas. */
+const uniteVent = () => UNITES_VENT[etat.reglages.unite]?.label ?? "km/h";
+const vv = (kmh) => {
+  const v = convertirVent(kmh, etat.reglages.unite);
+  return v == null ? "—" : String(v);
 };
 
 function echapper(s) {
@@ -193,6 +202,7 @@ let memoJours = { cle: null, valeur: null };
 function joursOuvertsScores() {
   const seuils = seuilsActifs();
   const cle = [etat.meteo?.recupereLe, etat.aero.metar?.brut, etat.aero.taf?.brut, etat.club?.recu, seuils.label, seuils.ventMax,
+               JSON.stringify(etat.reglages.jours),
                todayIso(), Math.floor(heureCourante())].join("|");
   if (memoJours.cle === cle) return memoJours.valeur;
   const valeur = calculerJoursOuverts(seuils);
@@ -258,6 +268,7 @@ function calculerJoursOuverts(seuils) {
       date,
       dateIso: jour.date,
       ouverture,
+      dispo: jourDisponible(etat.reglages, date, estFerie(date)),
       creneaux,
       verdictJour,
       meilleureFenetre,
@@ -326,8 +337,8 @@ function rendreObservation(el) {
   const age = m ? ageMetar(m) : Infinity;
   if (!m || age > 180) { el.hidden = true; return; }
   const seuils = seuilsActifs();
-  const vent = m.variable && m.dir == null ? `VRB ${m.vent}` : `${String(m.dir ?? 0).padStart(3, "0")}° ${m.vent}`;
-  const rafale = m.rafales ? ` rafales ${m.rafales}` : "";
+  const vent = m.variable && m.dir == null ? `VRB ${vv(m.vent)}` : `${String(m.dir ?? 0).padStart(3, "0")}° ${vv(m.vent)}`;
+  const rafale = m.rafales ? ` rafales ${vv(m.rafales)}` : "";
   const nuages = m.cavok ? "CAVOK"
     : m.nuages.length ? m.nuages.map((n) => `${n.couverture} ${formatDistance(n.baseM)}`).join(" · ") : "pas de nuage significatif";
   const perime = age > AERODROME.metarAgeMaxMin;
@@ -338,7 +349,7 @@ function rendreObservation(el) {
       <span class="obs-age">il y a ${r(age)} min</span>
     </div>
     <div class="obs-valeurs">
-      <span class="${(m.rafales ?? m.vent ?? 0) > seuils.ventMax ? "obs-alerte" : ""}"><b>${vent}${rafale}</b> km/h</span>
+      <span class="${(m.rafales ?? m.vent ?? 0) > seuils.ventMax ? "obs-alerte" : ""}"><b>${vent}${rafale}</b> ${uniteVent()}</span>
       <span class="${m.plafond < LEGAL_BE.plafondMinAGL ? "obs-alerte" : ""}">${echapper(nuages)}</span>
       <span class="${m.visibilite != null && m.visibilite < LEGAL_BE.visibiliteMin ? "obs-alerte" : ""}">vis. ${m.visibilite != null ? formatDistance(m.visibilite) : "—"}</span>
       ${m.temp != null ? `<span>${m.temp}°C</span>` : ""}
@@ -363,31 +374,201 @@ function rendreTaf(el, jour) {
     <code class="taf-brut">${echapper(t.brut)}</code>`;
 }
 
+const dateCourte = (iso) => `${Number(iso.slice(8))} ${MOIS_FR[Number(iso.slice(5, 7)) - 1]}`;
+const ilYa = (ms) => {
+  const min = Math.max(0, Math.round((Date.now() - ms) / 60000));
+  return min < 1 ? "à l'instant" : min < 60 ? `il y a ${min} min` : `il y a ${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")}`;
+};
+
 /**
- * État des activités publié par le club (page publique, via le relais).
- * Repris mot pour mot : c'est la décision du club, l'app ne l'interprète
- * pas et ne le mêle jamais à son verdict.
+ * Ligne « Club » : état des activités publié par le club (page publique,
+ * via le relais). Repris mot pour mot : c'est la décision du club, l'app
+ * ne l'interprète pas et ne le mêle jamais à son verdict.
  */
 function rendreClub(el) {
   const c = etat.club;
-  if (!el) return;
   if (!c?.etat) { el.hidden = true; return; }
-  const ageMin = Math.max(0, Math.round((Date.now() - new Date(c.recu).getTime()) / 60000));
   const perime = c.source === "cache";
   const prochain = (c.jours ?? []).find((j) => j.date >= todayIso());
   const ton = c.etat.ton ?? "neutre";
   el.hidden = false;
   el.innerHTML = `
-    <div class="obs-haut">
-      <span class="obs-titre"><span class="obs-point club-ton-${ton}"></span>Paraclub · état des activités</span>
-      <span class="obs-age${perime ? " perime" : ""}">${perime ? "hors ligne · " : ""}lu il y a ${ageMin} min</span>
+    <span class="mt-label">Club</span>
+    <div class="mt-corps">
+      <p class="mt-valeur club-etat club-ton-${ton}"><span class="mt-point club-ton-${ton}" aria-hidden="true"></span>${echapper(c.etat.libelle)}</p>
+      ${c.etat.message.map((p) => `<p class="mt-detail">${echapper(p)}</p>`).join("")}
+      ${prochain ? `<p class="mt-detail">Prochain jour : <b>${echapper(prochain.jour.toLowerCase())} ${dateCourte(prochain.date)}</b>
+        · point météo ${prochain.pointMeteo ? `<b>${echapper(prochain.pointMeteo)}</b>` : "pas encore annoncé"}
+        ${prochain.start ? `· start prévu <b>${echapper(prochain.start)}</b>` : ""}</p>` : ""}
+      ${c.maj ? `<p class="mt-detail mt-discret">Mis à jour par le club : ${echapper(c.maj)}</p>` : ""}
     </div>
-    <p class="club-etat club-ton-${ton}">${echapper(c.etat.libelle)}</p>
-    ${c.etat.message.map((p) => `<p class="club-message">${echapper(p)}</p>`).join("")}
-    ${prochain ? `<p class="club-detail">Prochain jour : <b>${echapper(prochain.jour.toLowerCase())} ${Number(prochain.date.slice(8))} ${MOIS_FR[Number(prochain.date.slice(5, 7)) - 1]}</b>
-      · point météo ${prochain.pointMeteo ? `<b>${echapper(prochain.pointMeteo)}</b>` : "pas encore annoncé"}
-      ${prochain.start ? `· start prévu <b>${echapper(prochain.start)}</b>` : ""}</p>` : ""}
-    ${c.maj ? `<p class="club-detail">Mis à jour par le club : ${echapper(c.maj)}</p>` : ""}`;
+    <span class="mt-age${perime ? " perime" : ""}">${perime ? "hors ligne · " : ""}${ilYa(new Date(c.recu).getTime())}</span>`;
+}
+
+/** Ligne « Charleroi » : la dernière observation (METAR), en condensé. */
+function rendreObsCompacte(el) {
+  const m = etat.aero.metar;
+  const age = m ? ageMetar(m) : Infinity;
+  if (!m || age > 180) { el.hidden = true; return; }
+  const s = seuilsActifs();
+  const perime = age > AERODROME.metarAgeMaxMin;
+  const vent = m.variable && m.dir == null ? `VRB ${vv(m.vent)}` : `${String(m.dir ?? 0).padStart(3, "0")}° ${vv(m.vent)}`;
+  const nuages = m.cavok ? "CAVOK"
+    : m.nuages.length ? m.nuages.map((n) => `${n.couverture} ${formatDistance(n.baseM)}`).join(" · ") : "pas de nuage significatif";
+  el.hidden = false;
+  el.innerHTML = `
+    <span class="mt-label">${AERODROME.nom}</span>
+    <div class="mt-corps">
+      <p class="mt-valeur mono"><span class="${(m.rafales ?? m.vent ?? 0) > s.ventMax ? "obs-alerte" : ""}">${vent}${m.rafales ? ` raf. ${vv(m.rafales)}` : ""}</span> <small>${uniteVent()}</small></p>
+      <p class="mt-detail mono">
+        <span class="${m.plafond < LEGAL_BE.plafondMinAGL ? "obs-alerte" : ""}">${echapper(nuages)}</span>
+        · <span class="${m.visibilite != null && m.visibilite < LEGAL_BE.visibiliteMin ? "obs-alerte" : ""}">vis. ${m.visibilite != null ? formatDistance(m.visibilite) : "—"}</span>
+        ${m.temp != null ? `· ${m.temp}°C` : ""}
+        ${m.temps.length ? `· <span class="obs-alerte">${echapper(m.temps.join(" "))}</span>` : ""}</p>
+      <details class="obs-brut"><summary>METAR brut · observé à ${heureBruxelles(m.obs)}</summary><code>${echapper(m.brut)}</code></details>
+    </div>
+    <span class="mt-age${perime ? " perime" : ""}">il y a ${r(age)} min</span>`;
+}
+
+// ------------------------------------------------------------
+// Avion de largage en direct (ADS-B via le relais, js/avion.js)
+// ------------------------------------------------------------
+const TRACE_MAX_MS = 20 * 60000;
+let minuteurAvion = null;
+let radarOuvert = false;
+
+function majTraces(avions, quand) {
+  for (const a of avions) {
+    const t = etat.traces.get(a.hex) ?? [];
+    const dernier = t.at(-1);
+    if (!dernier || dernier.lat !== a.lat || dernier.lon !== a.lon) t.push({ lat: a.lat, lon: a.lon, altM: a.altitudeM, t: quand });
+    etat.traces.set(a.hex, t.filter((p) => quand - p.t < TRACE_MAX_MS).slice(-150));
+  }
+  for (const [hex, t] of etat.traces) {
+    if (!t.length || quand - t.at(-1).t > TRACE_MAX_MS) etat.traces.delete(hex);
+  }
+}
+
+async function chargerAvion() {
+  const controleur = new AbortController();
+  const minuteur = setTimeout(() => controleur.abort(), 8000);
+  try {
+    const rep = await fetch(RELAIS_AVION, { cache: "no-store", signal: controleur.signal });
+    if (!rep.ok) throw new Error(`HTTP ${rep.status}`);
+    const d = await rep.json();
+    if (!Array.isArray(d?.avions)) throw new Error("réponse inattendue");
+    etat.avion = { ...d, erreur: null };
+    majTraces(d.avions, new Date(d.recu).getTime());
+  } catch {
+    etat.avion = { ...(etat.avion ?? {}), erreur: "relais injoignable" };
+  } finally {
+    clearTimeout(minuteur);
+  }
+  if (!$("#vue-semaine").hidden) rendreAvion($("#mt-avion"));
+}
+
+/** Jour d'ouverture, de 7h au coucher du soleil (+45 min) : l'avion peut voler. */
+function periodeDeVol() {
+  const date = dateLocale(todayIso());
+  if (!ouvertureReelle(date, etat.club)) return false;
+  const coucher = etat.meteo?.jours?.[0]?.sunset;
+  const h = heureCourante();
+  return h >= 7 && h <= (coucher ? heureDecimale(coucher) + 0.75 : 20);
+}
+
+/** Interroge souvent quand l'avion peut voler et que l'accueil est à l'écran, rarement sinon. */
+function planifierAvion() {
+  clearTimeout(minuteurAvion);
+  if (document.hidden || $("#vue-semaine").hidden) return;
+  const actif = periodeDeVol() || (etat.avion?.avions?.length ?? 0) > 0;
+  minuteurAvion = setTimeout(async () => { await chargerAvion(); planifierAvion(); }, actif ? 15000 : 120000);
+}
+
+function rendreAvion(el) {
+  const d = etat.avion;
+  const a = d?.avions?.[0];
+  let valeur;
+  let detail;
+  if (!d) {
+    valeur = `<span class="mt-attente">Recherche du signal…</span>`;
+    detail = "";
+  } else if (!a) {
+    valeur = d.erreur ? "Suivi indisponible" : "Pas de signal près du terrain";
+    detail = d.erreur
+      ? `<p class="mt-detail">Le relais ne répond pas (${echapper(d.erreur)}).</p>`
+      : `<p class="mt-detail mt-discret">Aucun avion de largage détecté dans un rayon de ${RAYON_KM} km. Pas de signal
+         ne veut pas dire « au sol » : l'avion peut ne pas émettre ou voler sous la couverture des récepteurs.</p>`;
+  } else {
+    const phase = phaseVol(a);
+    const nom = a.club ? `${a.immat}` : `${a.type ?? "Avion"} ${a.immat ?? ""}`;
+    valeur = `<span class="mono">${echapper(nom)}</span> · ${a.auSol ? "au sol" : `<b class="mono">${a.altitudeM != null ? a.altitudeM.toLocaleString("fr-BE") : "—"} m</b>`}${phase && !a.auSol ? ` · ${phase}` : ""}`;
+    const age = a.ageS != null ? Math.round(a.ageS + (Date.now() - new Date(d.recu).getTime()) / 1000) : null;
+    detail = `<p class="mt-detail">${a.distanceKm.toLocaleString("fr-BE")} km au ${cardinal(a.relevement)} du terrain
+        ${a.vitesseKmh != null ? `· ${vv(a.vitesseKmh)} ${uniteVent()}` : ""}
+        ${a.altitudeFt != null && !a.auSol ? `· ${a.altitudeFt.toLocaleString("fr-BE")} ft` : ""}
+        ${age != null ? `· signal ${age > SIGNAL_PERIME_S ? `<span class="obs-alerte">il y a ${age} s</span>` : `il y a ${age} s`}` : ""}</p>
+      ${a.club ? "" : `<p class="mt-detail mt-discret">Avion de largage près du terrain, pas l'immatriculation connue du club.</p>`}`;
+  }
+  el.innerHTML = `
+    <span class="mt-label">Avion</span>
+    <div class="mt-corps">
+      <p class="mt-valeur">${valeur}</p>
+      ${detail}
+      <details class="radar-cadre"${radarOuvert ? " open" : ""}>
+        <summary>Radar</summary>
+        ${svgRadar(d?.avions ?? [])}
+        <p class="mt-detail mt-discret">Positions ADS-B publiques (${echapper(d?.source ?? "adsb.lol")}), relais toutes les 10 s.
+          Cercles tous les 5 km autour de la piste ${String(DZ.qfu).padStart(3, "0")}°/${DZ.qfu + 180}°.</p>
+      </details>
+    </div>
+    <span class="mt-age">${d?.recu ? ilYa(new Date(d.recu).getTime()) : ""}</span>`;
+  el.querySelector(".radar-cadre").addEventListener("toggle", (e) => { radarOuvert = e.target.open; });
+}
+
+/** Radar en SVG : terrain au centre, nord en haut, trace de l'avion, jauge d'altitude jusqu'au largage. */
+function svgRadar(avions) {
+  const C = 120;
+  const R = 108;
+  const k = R / RAYON_KM;
+  const pos = (lat, lon) => {
+    const dist = distanceKm(DZ.lat, DZ.lon, lat, lon);
+    const b = (relevement(DZ.lat, DZ.lon, lat, lon) * Math.PI) / 180;
+    return [C + Math.sin(b) * dist * k, C - Math.cos(b) * dist * k];
+  };
+  const anneaux = [5, 10, 15].map((km) => `
+    <circle cx="${C}" cy="${C}" r="${km * k}" class="r-anneau"/>
+    <text x="${C + 3}" y="${C - km * k + 11}" class="r-km">${km}</text>`).join("");
+  const largage = 4000;
+  const avionsSvg = avions.map((a) => {
+    const [x, y] = pos(a.lat, a.lon);
+    const trace = (etat.traces.get(a.hex) ?? []).map((p) => pos(p.lat, p.lon).map((v) => v.toFixed(1)).join(",")).join(" ");
+    return `
+      ${trace ? `<polyline points="${trace}" class="r-trace${a.club ? " club" : ""}"/>` : ""}
+      <g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${a.cap ?? 0})">
+        <path d="M0,-8 L5,6 L0,3 L-5,6 Z" class="r-avion${a.club ? " club" : ""}"/>
+      </g>
+      <text x="${(x + 9).toFixed(1)}" y="${(y + 4).toFixed(1)}" class="r-etiq">${a.auSol ? "sol" : a.altitudeM != null ? `${(a.altitudeM / 1000).toLocaleString("fr-BE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km` : ""}</text>`;
+  }).join("");
+  const principal = avions[0];
+  const hJauge = 200;
+  const yAlt = (m) => 20 + hJauge - (Math.min(m, 4500) / 4500) * hJauge;
+  return `
+    <svg class="radar" viewBox="0 0 312 240" role="img" aria-label="Radar : position de l'avion autour du terrain">
+      <circle cx="${C}" cy="${C}" r="${R}" class="r-fond"/>
+      ${anneaux}
+      <line x1="${C}" y1="${C - R}" x2="${C}" y2="${C + R}" class="r-axe"/>
+      <line x1="${C - R}" y1="${C}" x2="${C + R}" y2="${C}" class="r-axe"/>
+      <text x="${C}" y="${C - R - 2}" class="r-nord">N</text>
+      <g transform="rotate(${DZ.qfu} ${C} ${C})"><rect x="${C - 2}" y="${C - 9}" width="4" height="18" rx="1" class="r-piste"/></g>
+      ${avionsSvg}
+      <g class="r-jauge">
+        <rect x="256" y="20" width="10" height="${hJauge}" rx="3" class="r-jauge-fond"/>
+        ${principal?.altitudeM != null ? `<rect x="256" y="${yAlt(principal.altitudeM).toFixed(1)}" width="10" height="${(20 + hJauge - yAlt(principal.altitudeM)).toFixed(1)}" rx="3" class="r-jauge-niveau"/>` : ""}
+        <line x1="250" y1="${yAlt(largage)}" x2="272" y2="${yAlt(largage)}" class="r-largage"/>
+        <text x="275" y="${yAlt(largage) + 4}" class="r-km">4 km</text>
+        <text x="275" y="${20 + hJauge + 4}" class="r-km">sol</text>
+      </g>
+    </svg>`;
 }
 
 /** Note sous la liste : d'où vient le calendrier affiché. */
@@ -418,13 +599,63 @@ function textePartielles(a) {
   return a?.partielles ? `dont ${a.partielles} partielle${a.partielles > 1 ? "s" : ""}` : "";
 }
 
+/**
+ * « La réponse d'abord » : le prochain de MES jours qui saute, avec mon
+ * niveau et ma marge. Jamais de case vide : à défaut, le moins mauvais.
+ */
+function rendreReponse(jours) {
+  const el = $("#reponse");
+  if (!jours.length) { el.hidden = true; return; }
+  const mes = jours.filter((j) => j.dispo);
+  const vert = mes.find((j) => j.verdictJour === "vert");
+  const orange = mes.find((j) => j.verdictJour === "orange");
+  const choix = vert ?? orange ?? mes[0] ?? null;
+  const s = seuilsActifs();
+  el.hidden = false;
+  if (!choix) {
+    el.className = "reponse neutre";
+    el.innerHTML = `
+      <span class="rep-titre">Aucun de tes jours n'est ouvert cette semaine</span>
+      <span class="rep-detail">Le club ouvre ${jours.map((j) => `${JOURS_COURTS[j.date.getDay()].toLowerCase()} ${j.date.getDate()}`).join(", ")}. Change « Mes jours » dans les réglages.</span>`;
+    el.onclick = () => { rendreReglages(); basculerVue("reglages"); };
+    return;
+  }
+  const titre = vert ? "Prochain jour qui saute" : orange ? "Aucun jour franc · le plus jouable" : "Aucun jour favorable sur 7 jours";
+  const fenetre = texteFenetre(choix.meilleureFenetre);
+  const type = CARBURANTS[etat.reglages.trajet?.carburant] ? etat.reglages.trajet.carburant : "diesel";
+  const dep = etat.reglages.trajet
+    ? conseilDeplacement({ verdict: choix.verdictJour, duree: choix.meilleureFenetre?.duree ?? 0, confiance: choix.confiance,
+        echeanceJours: choix.index, prixLitre: prixPour(etat.carburant, type), trajet: etat.reglages.trajet })
+    : null;
+  el.className = `reponse ${choix.verdictJour}`;
+  el.innerHTML = `
+    <span class="rep-titre">${titre}${etat.reglages.niveauChoisi ? ` · ${echapper(s.label)}` : ""}</span>
+    <span class="rep-jour"><span aria-hidden="true">${VERDICT_SYMBOLE[choix.verdictJour]}</span> ${JOURS_FR[choix.date.getDay()]} ${choix.date.getDate()} ${MOIS_FR[choix.date.getMonth()]}</span>
+    <span class="rep-verdict"><strong>${VERDICT_TEXTE[choix.verdictJour]}</strong>${fenetre ? ` <span class="mono">${fenetre}</span>` : ""}</span>
+    <span class="rep-meta">
+      ${choix.accordFenetre ? `<span><b class="mono">${texteAccord(choix.accordFenetre)}</b> sources ${textePartielles(choix.accordFenetre)}</span>` : ""}
+      <span>${choix.index === 0 ? "aujourd'hui" : choix.index === 1 ? "demain" : `J+${choix.index}`}</span>
+      ${choix.precision !== "hr" ? `<span>${choix.precision === "regional" ? "modèles 7-10 km" : "en partie 7-10 km"}</span>` : ""}
+      ${choix.ouverture.source === "club" ? `<span>confirmé par le club</span>` : ""}
+    </span>
+    ${!vert && choix.motif ? `<span class="rep-detail">${echapper(choix.motif)}</span>` : ""}
+    ${dep ? `<span class="rep-detail rep-dep dep-${dep.niveau}">${dep.titre}</span>` : ""}
+    ${s.marge > 0 ? `<span class="rep-detail">Limite appliquée : ${vv(s.ventMax)} ${uniteVent()} (ta marge ${vv(s.marge)} ${uniteVent()} sous ${vv(s.ventMaxReglement)})</span>` : ""}`;
+  el.onclick = () => ouvrirJour(choix.index);
+  el.setAttribute("aria-label", `${titre} : ${JOURS_FR[choix.date.getDay()]} ${choix.date.getDate()}, ${VERDICT_TEXTE[choix.verdictJour]}${fenetre ? `, ${fenetre}` : ""}`);
+}
+
 function rendreSemaine() {
   const jours = joursOuvertsScores();
   $("#niveau-actif").textContent = seuilsActifs().label;
-  rendreObservation($("#obs"));
-  rendreClub($("#club"));
+  const prenom = etat.reglages.prenom;
+  $("#salut").hidden = !prenom;
+  if (prenom) $("#salut").textContent = `Salut ${prenom}${etat.reglages.sauts != null ? ` · ${etat.reglages.sauts} saut${etat.reglages.sauts > 1 ? "s" : ""}` : ""}`;
+  rendreReponse(jours);
+  rendreClub($("#mt-club"));
+  rendreObsCompacte($("#mt-obs"));
+  rendreAvion($("#mt-avion"));
   rendreNoteCalendrier($("#note-calendrier"));
-  rendreChoixNiveau();
 
   const conteneur = $("#jours");
   conteneur.innerHTML = "";
@@ -439,37 +670,35 @@ function rendreSemaine() {
 
   for (const j of jours) {
     const carte = document.createElement("button");
-    carte.className = `carte-jour ${j.verdictJour}${j.precision === "regional" ? " lointain" : ""}`;
+    carte.className = `carte-jour ${j.verdictJour}${j.precision === "regional" ? " lointain" : ""}${j.dispo ? "" : " hors-dispo"}`;
     const fenetre = texteFenetre(j.meilleureFenetre);
     const bande = j.heures.map(({ h, score }) => {
       const hauteur = score.accord.total ? Math.max(12, r((score.accord.favorables / score.accord.total) * 100)) : 100;
       return `<span class="bande-h ${score.verdict}" title="${h.heure}h · ${VERDICT_TEXTE[score.verdict]} · ${texteAccord(score.accord)} sources favorables ${textePartielles(score.accord)}">
         <i style="height:${hauteur}%"></i><em>${h.heure % 2 === 0 ? h.heure : ""}</em></span>`;
     }).join("");
+    const etiquettes = [
+      j.dispo ? "" : `<span class="etiq-jour">Pas dans mes jours</span>`,
+      j.ouverture.type === "ferie" ? `<span class="etiq-jour">Férié</span>` : "",
+      j.ouverture.type === "club" ? `<span class="etiq-jour">Ouverture exceptionnelle</span>` : "",
+      j.ouverture.pointMeteo ? `<span class="etiq-jour">Point météo ${echapper(j.ouverture.pointMeteo)}</span>` : "",
+      j.precision !== "hr" ? `<span class="etiq-jour">${j.precision === "regional" ? "Modèles 7-10 km" : "En partie 7-10 km"}</span>` : "",
+      rendreTendance(j.tendance),
+    ].join("");
 
     carte.innerHTML = `
-      <span class="cj-haut">
-        <span class="cj-quand">
-          <span class="cj-nom">${JOURS_FR[j.date.getDay()]}</span>
-          <span class="cj-date">${j.date.getDate()} ${MOIS_FR[j.date.getMonth()]}</span>
-          ${j.ouverture.type === "ferie" ? `<span class="etiq-jour">Férié</span>` : ""}
-          ${j.ouverture.type === "club" ? `<span class="etiq-jour">Ouverture exceptionnelle</span>` : ""}
-          ${j.ouverture.pointMeteo ? `<span class="etiq-jour">Point météo ${echapper(j.ouverture.pointMeteo)}</span>` : ""}
-          ${j.precision !== "hr" ? `<span class="etiq-jour">${j.precision === "regional" ? "Modèles 7-10 km" : "En partie 7-10 km"}</span>` : ""}
-          ${rendreTendance(j.tendance)}
-        </span>
-        ${j.accordFenetre ? `<span class="cj-accord"><b>${texteAccord(j.accordFenetre)}</b><small>sources</small>${j.accordFenetre.partielles ? `<small class="cj-partielles">${textePartielles(j.accordFenetre)}</small>` : ""}</span>` : ""}
+      <span class="cj-ligne">
+        <span class="cj-quand"><span class="cj-nom">${JOURS_COURTS[j.date.getDay()]}</span><span class="cj-date">${j.date.getDate()} ${MOIS_FR[j.date.getMonth()]}</span></span>
+        <span class="cj-verdict"><span class="cj-symbole" aria-hidden="true">${VERDICT_SYMBOLE[j.verdictJour]}</span><strong>${VERDICT_TEXTE[j.verdictJour]}</strong></span>
+        <span class="cj-fenetre">${fenetre ?? "—"}</span>
+        <span class="cj-accord">${j.accordFenetre ? `<b>${texteAccord(j.accordFenetre)}</b>` : ""}</span>
       </span>
-      <span class="cj-verdict">
-        <span class="cj-symbole" aria-hidden="true">${VERDICT_SYMBOLE[j.verdictJour]}</span>
-        <strong>${VERDICT_TEXTE[j.verdictJour]}</strong>
-        <span class="cj-fenetre">${fenetre ?? "aucune fenêtre de 2 h"}</span>
-      </span>
-      ${j.motif ? `<span class="cj-motif">${echapper(j.motif)}</span>` : ""}
-      <span class="bande" aria-hidden="true">${bande}</span>`;
+      ${etiquettes.trim() || j.motif ? `<span class="cj-infos">${etiquettes}${j.motif ? `<span class="cj-motif">${echapper(j.motif)}</span>` : ""}</span>` : ""}
+      ${j.dispo ? `<span class="bande" aria-hidden="true">${bande}</span>` : ""}`;
     carte.setAttribute("aria-label",
       `${JOURS_FR[j.date.getDay()]} ${j.date.getDate()} — ${VERDICT_TEXTE[j.verdictJour]}` +
-      `${fenetre ? `, ${fenetre}` : ""}${j.accordFenetre ? `, ${texteAccord(j.accordFenetre)} sources favorables ${textePartielles(j.accordFenetre)}` : ""}`);
+      `${fenetre ? `, ${fenetre}` : ""}${j.accordFenetre ? `, ${texteAccord(j.accordFenetre)} sources favorables ${textePartielles(j.accordFenetre)}` : ""}` +
+      `${j.dispo ? "" : ", pas dans tes jours"}`);
     carte.addEventListener("click", () => ouvrirJour(j.index));
     conteneur.appendChild(carte);
   }
@@ -526,24 +755,41 @@ function texteDuree(minutes) {
   return h ? `${h} h${m ? ` ${String(m).padStart(2, "0")}` : ""}` : `${m} min`;
 }
 
-/** Premier lancement : le membre indique son niveau, une fois. */
-function rendreChoixNiveau() {
-  const el = $("#choix-niveau");
-  el.hidden = etat.reglages.niveauChoisi;
-  if (el.hidden) return;
-  $("#choix-niveau-boutons").innerHTML = Object.entries(NIVEAUX_PRATIQUE)
-    .map(([cle, n]) => `<button class="btn secondaire" data-niveau="${cle}">${n.label}</button>`).join("");
-}
-
 /** Sur une journée limite, le club peut poser une barrière d'expérience. */
 function afficherAvertissementExperience(el, verdict) {
   const concerne = verdict === "orange";
   el.hidden = !concerne;
   if (concerne) {
+    const sauts = etat.reglages.sauts;
     el.innerHTML = `Journée limite : le club peut imposer un <strong>nombre de sauts minimum</strong>
       pour débuter, et le RT peut durcir les limites (RSB §3.4.2).
-      <a href="${LIENS.briefing}" target="_blank" rel="noopener">Voir la limite de sauts du club</a>.`;
+      ${sauts != null ? `Tu as <strong class="mono">${sauts}</strong> saut${sauts > 1 ? "s" : ""} : ` : ""}<a href="${LIENS.briefing}" target="_blank" rel="noopener">${sauts != null ? "compare avec la limite de sauts du club" : "Voir la limite de sauts du club"}</a>.`;
   }
+}
+
+/**
+ * Pourquoi : les règles en cause sur la journée, avec le nombre d'heures
+ * concernées. Seulement des statuts calculés, rien d'estimé.
+ */
+function rendrePourquoi(el, info) {
+  if (info.verdictJour === "vert") { el.hidden = true; return; }
+  const compte = new Map();
+  for (const { score } of info.heures) {
+    for (const regle of score.regles) {
+      if (regle.statut === "ok") continue;
+      const cle = `${regle.label}|${regle.statut}`;
+      const c = compte.get(cle) ?? { label: regle.label, statut: regle.statut, source: regle.source, heures: 0 };
+      c.heures += 1;
+      compte.set(cle, c);
+    }
+  }
+  const lignes = [...compte.values()].sort((a, b) => (a.statut === "violee" ? -1 : 0) - (b.statut === "violee" ? -1 : 0) || b.heures - a.heures).slice(0, 4);
+  el.hidden = !lignes.length;
+  el.innerHTML = lignes.map((l) => `
+    <li class="${l.statut === "violee" ? "bloquant" : "limite"}">
+      <span>${echapper(l.label)} — ${LIBELLE_STATUT[l.statut]}</span>
+      <small>${l.heures} h sur ${info.heures.length} · ${echapper(l.source)}</small>
+    </li>`).join("");
 }
 
 function rendreJour() {
@@ -580,6 +826,14 @@ function rendreJour() {
     })
     .join("");
 
+  rendrePourquoi($("#jour-pourquoi"), info);
+  const marge = $("#jour-marge");
+  marge.hidden = !(seuils.marge > 0);
+  if (seuils.marge > 0) {
+    marge.textContent = `Limite de vent appliquée : ${vv(seuils.ventMax)} ${uniteVent()} — ta marge de ${vv(seuils.marge)} ${uniteVent()} sous la limite du règlement (${vv(seuils.ventMaxReglement)} ${uniteVent()}).`;
+  }
+  $("#legende-unite").textContent = uniteVent();
+
   rendreDeplacement($("#jour-deplacement"), {
     verdict: info.verdictJour,
     duree: info.meilleureFenetre?.duree ?? 0,
@@ -611,8 +865,8 @@ const tempsCourt = (c) => (c.orage ? "TS" : c.cb ? (c.convectif ?? "CB") : c.pre
 const LIGNES = [
   { cle: "verdict", label: "Verdict" },
   { cle: "accord", label: "Sources ✓" },
-  { regle: "ventNiveau", label: "Vent moyen", val: (ss) => plage(ss.map((s) => s.conditions.vent)) },
-  { regle: "rafales", label: "Rafales", val: (ss) => plage(ss.map((s) => s.conditions.rafales ?? (s.conditions.rafalesAbsentesSignifientCalme ? s.conditions.vent : null))) },
+  { regle: "ventNiveau", label: "Vent moyen", val: (ss) => plage(ss.map((s) => s.conditions.vent), vv) },
+  { regle: "rafales", label: "Rafales", val: (ss) => plage(ss.map((s) => s.conditions.rafales ?? (s.conditions.rafalesAbsentesSignifientCalme ? s.conditions.vent : null)), vv) },
   { cle: "direction", label: "Direction" },
   { regle: "plafond", label: "Plafond", val: (ss) => {
       const connus = ss.map((s) => s.conditions.plafond).filter((x) => x != null);
@@ -717,7 +971,7 @@ function rendreSources(score) {
     const nom = s.type === "modele" ? `${s.nom} <small>${s.maille}</small>` : s.nom;
     return `<tr class="${ok ? "src-oui" : enEchec ? "src-non" : "src-limite"}">
       <th scope="row">${nom}</th>
-      <td>${c.vent != null ? r(c.vent) : "—"}</td><td>${raf != null ? r(raf) : "—"}</td>
+      <td>${vv(c.vent)}</td><td>${vv(raf)}</td>
       <td>${plafond}</td><td>${c.visibilite != null ? court(Math.min(c.visibilite, 99000)) : "—"}</td>
       <td>${tempsCourt(c) ?? "—"}</td>
       <td class="src-verdict">${s.partielle ? "~" : ok ? "✓" : enEchec ? "✕" : "▲"}</td></tr>`;
@@ -732,7 +986,7 @@ function rendreSources(score) {
       <tbody>${score.sources.map(ligne).join("")}</tbody>
     </table></div>
     ${variantes}
-    <p class="note-hypotheses">Vent en km/h, distances en m (k = km). Plafond « &gt;2k » : le modèle ne prévoit aucune couche ≥ 5/8 sous 2 km ;
+    <p class="note-hypotheses">Vent en ${uniteVent()}, distances en m (k = km). Plafond « &gt;2k » : le modèle ne prévoit aucune couche ≥ 5/8 sous 2 km ;
       « ? » : couche basse ≥ 5/8 dont le modèle ne fournit pas la base (non estimée).
       « ~ » : source partielle — elle ne contredit aucune règle, mais ne fournit pas toutes les données légales (base des nuages ou visibilité).
       ${score.precision === "regional" ? "<br><strong>Hors portée des modèles 1,3-2,2 km : seuls les modèles régionaux (7-10 km) couvrent cette heure.</strong>" : ""}
@@ -751,13 +1005,13 @@ function rendreProfil(h) {
   }
   lignes.sort((a, b) => b.agl - a.agl);
   $("#profil").innerHTML = `
-    <div class="profil-entete"><span>Alt. AGL</span><span>Vent</span><span>T°</span></div>
+    <div class="profil-entete"><span>Alt. AGL</span><span>Vent (${uniteVent()})</span><span>T°</span></div>
     ${lignes.map((l) => `
     <div class="niveau">
       <div class="niv-alt"><strong>${l.agl} m</strong></div>
       <div class="niv-vent">
         <span class="fleche-icone" style="transform: rotate(${rotationFleche(l.dir)}deg)">➤</span>
-        <b>${l.vent != null ? r(l.vent) : "—"}</b><small>${cardinal(l.dir)}</small>
+        <b>${vv(l.vent)}</b><small>${cardinal(l.dir)}</small>
       </div>
       <div class="niv-temp">${l.temp != null ? `${r(l.temp)}°` : "—"}</div>
     </div>`).join("")}
@@ -774,9 +1028,9 @@ function rendrePiste(score) {
   rendreBoussole(dir, vent);
   const vp = ventPiste(vent, dir);
   $("#crosswind").innerHTML = `
-    <div class="ligne"><span>Vent (${echapper(s?.nom ?? "—")})</span><strong>${cardinal(dir)} ${r(dir)}° · ${r(vent)} km/h</strong></div>
-    <div class="ligne"><span>Traversier</span><strong>${vp.traversier} km/h</strong></div>
-    <div class="ligne"><span>De face</span><strong>${vp.face} km/h</strong></div>
+    <div class="ligne"><span>Vent (${echapper(s?.nom ?? "—")})</span><strong>${cardinal(dir)} ${r(dir)}° · ${vv(vent)} ${uniteVent()}</strong></div>
+    <div class="ligne"><span>Traversier</span><strong>${vv(vp.traversier)} ${uniteVent()}</strong></div>
+    <div class="ligne"><span>De face</span><strong>${vv(vp.face)} ${uniteVent()}</strong></div>
     <span class="note">Axe piste ${String(DZ.qfu).padStart(3, "0")}° / ${DZ.qfu + 180}°. Sous voile, on pose face à la manche à air.</span>`;
 }
 
@@ -802,39 +1056,82 @@ function rendreBoussole(direction, vitesse) {
 // ------------------------------------------------------------
 // Réglages
 // ------------------------------------------------------------
+const segment = (cle, valeur, label, actif) =>
+  `<button type="button" class="segment" data-${cle}="${valeur}" aria-pressed="${actif}">${label}</button>`;
+
 function rendreReglages() {
+  const p = etat.reglages;
+  $("#reglage-prenom").value = p.prenom;
+  $("#reglage-sauts").value = p.sauts ?? "";
   $("#reglage-niveau").innerHTML = Object.entries(NIVEAUX_PRATIQUE)
-    .map(([cle, n]) => `<option value="${cle}"${cle === etat.reglages.niveau ? " selected" : ""}>${n.label}</option>`)
+    .map(([cle, n]) => `<option value="${cle}"${cle === p.niveau ? " selected" : ""}>${n.label}</option>`)
     .join("");
+  $("#reglage-jours").innerHTML = [1, 2, 3, 4, 5, 6, 0]
+    .map((d) => `<label class="jour-case"><input type="checkbox" data-jour="${d}"${p.jours[d] ? " checked" : ""}><span>${JOURS_SEMAINE[d]}</span></label>`).join("")
+    + `<label class="jour-case large"><input type="checkbox" data-jour="feries"${p.jours.feries ? " checked" : ""}><span>jours fériés</span></label>`;
+
   const s = seuilsActifs();
-  const champ = $("#reglage-vent");
-  champ.max = s.ventMaxReglement;
-  champ.value = s.ventMax;
+  const champ = $("#reglage-marge");
+  champ.max = Math.min(MARGE_MAX, s.ventMaxReglement - 5);
+  champ.value = p.marge;
+  $("#reglage-marge-unite").textContent = "km/h";
   $("#reglage-vent-borne").textContent =
-    `Limite du règlement pour ce niveau : ${s.ventMaxReglement} km/h (RSB §3.4.2). Tu peux seulement la durcir.`;
+    `Limite du règlement pour « ${s.label} » : ${s.ventMaxReglement} km/h (RSB §3.4.2). Avec ta marge : ${s.ventMax} km/h`
+    + (etat.reglages.unite !== "kmh" ? ` (${vv(s.ventMax)} ${uniteVent()})` : "") + ". Une marge ne peut que durcir.";
   $("#reglage-resume").innerHTML = `
-    <li>Vent moyen et rafales ≤ <strong>${s.ventMax} km/h</strong>${s.ventMax < s.ventMaxReglement ? " (durci par toi)" : ""}</li>
+    <li>Vent moyen et rafales ≤ <strong>${s.ventMax} km/h</strong>${s.marge > 0 ? ` (marge de ${s.marge} km/h)` : ""}</li>
     <li>Vent moyen ≤ <strong>${LEGAL_BE.ventMoyenMaxSol} km/h</strong> (25 kts, loi)</li>
     <li>Base des nuages ≥ <strong>${LEGAL_BE.plafondMinAGL} m</strong> (3000 ft) · visibilité ≥ <strong>3 km</strong></li>
     <li>Ouverture : <strong>${s.hauteurOuverture} m</strong> — ${echapper(s.sourceOuverture)}</li>`;
-  const t = etat.reglages.trajet ?? {};
+
+  const t = p.trajet ?? {};
   $("#reglage-trajet-km").value = t.distanceAllerKm ?? "";
   $("#reglage-trajet-min").value = t.dureeAllerMin ?? "";
   $("#reglage-trajet-conso").value = t.consoL100 ?? "";
   $("#reglage-trajet-carburant").innerHTML = Object.entries(CARBURANTS)
     .map(([cle, c]) => `<option value="${cle}"${cle === (t.carburant ?? "diesel") ? " selected" : ""}>${c.label}</option>`).join("");
+
+  $("#reglage-theme").innerHTML = Object.entries(THEMES).map(([cle, l]) => segment("theme", cle, l, cle === p.theme)).join("");
+  $("#reglage-unite").innerHTML = Object.entries(UNITES_VENT).map(([cle, u]) => segment("unite", cle, u.label, cle === p.unite)).join("");
+}
+
+/** Applique une modification du profil : validée, enregistrée, affichée. */
+function majProfil(modif, { rerendre = true } = {}) {
+  etat.reglages = normaliserProfil({ ...etat.reglages, ...modif });
+  sauverReglages();
+  if (rerendre) rendreReglages();
+  appliquerTheme();
+}
+
+function message(texte) {
+  $("#reglage-message").textContent = texte;
 }
 
 function brancherReglages() {
-  $("#choix-niveau-boutons").addEventListener("click", (e) => {
-    const cle = e.target.closest("[data-niveau]")?.dataset.niveau;
-    if (!NIVEAUX_PRATIQUE[cle]) return;
-    etat.reglages.niveau = cle;
-    etat.reglages.ventMax = null;
-    etat.reglages.niveauChoisi = true;
-    sauverReglages();
-    rendreSemaine();
+  $("#reglage-prenom").addEventListener("change", (e) => majProfil({ prenom: e.target.value }));
+  $("#reglage-sauts").addEventListener("change", (e) => {
+    const v = Number(e.target.value);
+    majProfil({ sauts: e.target.value !== "" && Number.isInteger(v) && v >= 0 ? v : null });
   });
+  $("#reglage-niveau").addEventListener("change", (e) => majProfil({ niveau: e.target.value, niveauChoisi: true }));
+  $("#reglage-marge").addEventListener("change", (e) => {
+    const v = Math.round(Number(e.target.value));
+    majProfil({ marge: Number.isFinite(v) ? Math.max(0, Math.min(Number(e.target.max), v)) : 0 });
+  });
+  $("#reglage-jours").addEventListener("change", (e) => {
+    const cle = e.target.dataset.jour;
+    if (cle == null) return;
+    majProfil({ jours: { ...etat.reglages.jours, [cle]: e.target.checked } });
+  });
+  $("#reglage-theme").addEventListener("click", (e) => {
+    const v = e.target.closest("[data-theme]")?.dataset.theme;
+    if (v) majProfil({ theme: v });
+  });
+  $("#reglage-unite").addEventListener("click", (e) => {
+    const v = e.target.closest("[data-unite]")?.dataset.unite;
+    if (v) majProfil({ unite: v });
+  });
+
   // Trajet : un champ vide ou invalide efface la valeur, rien n'est supposé.
   const champsTrajet = { "#reglage-trajet-km": "distanceAllerKm", "#reglage-trajet-min": "dureeAllerMin", "#reglage-trajet-conso": "consoL100" };
   for (const [selecteur, cle] of Object.entries(champsTrajet)) {
@@ -843,57 +1140,95 @@ function brancherReglages() {
       const trajet = { ...(etat.reglages.trajet ?? {}) };
       if (e.target.value !== "" && Number.isFinite(v) && v > 0) trajet[cle] = v;
       else { delete trajet[cle]; e.target.value = ""; }
-      etat.reglages.trajet = Object.keys(trajet).length ? trajet : null;
-      sauverReglages();
+      majProfil({ trajet }, { rerendre: false });
     });
   }
   $("#reglage-trajet-carburant").addEventListener("change", (e) => {
-    const trajet = { ...(etat.reglages.trajet ?? {}) };
-    if (CARBURANTS[e.target.value] && e.target.value !== "diesel") trajet.carburant = e.target.value;
-    else delete trajet.carburant;
-    etat.reglages.trajet = Object.keys(trajet).length ? trajet : null;
-    sauverReglages();
+    majProfil({ trajet: { ...(etat.reglages.trajet ?? {}), carburant: e.target.value } }, { rerendre: false });
   });
-  $("#reglage-niveau").addEventListener("change", (e) => {
-    etat.reglages.niveau = e.target.value;
-    etat.reglages.ventMax = null;
-    etat.reglages.niveauChoisi = true;
-    sauverReglages();
-    rendreReglages();
-    rendreSemaine();
+
+  $("#reglage-exporter").addEventListener("click", async () => {
+    const code = exporterProfil(etat.reglages);
+    $("#reglage-code").value = code;
+    try {
+      await navigator.clipboard.writeText(code);
+      message("Code copié. Colle-le dans « Coller un code » sur ton autre appareil.");
+    } catch {
+      $("#reglage-code").select();
+      message("Copie automatique impossible : le code est sélectionné ci-dessus, copie-le à la main.");
+    }
   });
-  $("#reglage-vent").addEventListener("change", (e) => {
-    const max = (NIVEAUX_PRATIQUE[etat.reglages.niveau] ?? NIVEAUX_PRATIQUE.tandem).ventMax;
-    const v = Math.max(5, Math.min(max, Number(e.target.value) || max));
-    etat.reglages.ventMax = v < max ? v : null;
-    e.target.value = v;
-    sauverReglages();
-    rendreReglages();
-    rendreSemaine();
-  });
-  $("#reglage-reset").addEventListener("click", () => {
-    etat.reglages.ventMax = null;
+  $("#reglage-importer").addEventListener("click", () => {
+    const p = importerProfil($("#reglage-code").value);
+    if (!p) { message("Code illisible : vérifie qu'il commence par V4K2- et qu'il est complet."); return; }
+    etat.reglages = p;
     sauverReglages();
     rendreReglages();
-    rendreSemaine();
+    appliquerTheme();
+    $("#reglage-code").value = "";
+    message("Profil importé.");
   });
+  $("#reglage-effacer").addEventListener("click", () => {
+    if ($("#reglage-effacer").dataset.confirme !== "1") {
+      $("#reglage-effacer").dataset.confirme = "1";
+      $("#reglage-effacer").textContent = "Confirmer : tout effacer";
+      return;
+    }
+    try { localStorage.clear(); } catch { /* stockage indisponible */ }
+    location.reload();
+  });
+
+  brancherBienvenue();
+}
+
+// ------------------------------------------------------------
+// Bienvenue : premier lancement (prénom, niveau, sauts)
+// ------------------------------------------------------------
+function rendreBienvenue() {
+  $("#bv-niveaux").innerHTML = Object.entries(NIVEAUX_PRATIQUE)
+    .map(([cle, n]) => segment("niveau", cle, n.label, false)).join("");
+}
+
+function brancherBienvenue() {
+  let niveau = null;
+  $("#bv-niveaux").addEventListener("click", (e) => {
+    const cle = e.target.closest("[data-niveau]")?.dataset.niveau;
+    if (!NIVEAUX_PRATIQUE[cle]) return;
+    niveau = cle;
+    for (const b of $("#bv-niveaux").querySelectorAll("[data-niveau]")) b.setAttribute("aria-pressed", String(b.dataset.niveau === cle));
+    $("#bv-ok").disabled = false;
+  });
+  const terminer = (modif) => {
+    majProfil({ ...modif, niveauChoisi: true }, { rerendre: false });
+    basculerVue("semaine");
+    rendreSemaine();
+  };
+  $("#bv-ok").addEventListener("click", () => {
+    const sauts = Number($("#bv-sauts").value);
+    terminer({ niveau, prenom: $("#bv-prenom").value, sauts: $("#bv-sauts").value !== "" && Number.isInteger(sauts) && sauts >= 0 ? sauts : null });
+  });
+  $("#bv-passer").addEventListener("click", () => terminer({ niveau: "tandem" }));
 }
 
 // ------------------------------------------------------------
 // Navigation, thème, fraîcheur
 // ------------------------------------------------------------
 function basculerVue(nom) {
-  for (const v of ["semaine", "jour", "reglages"]) {
+  for (const v of ["bienvenue", "semaine", "jour", "reglages"]) {
     $(`#vue-${v}`).hidden = v !== nom;
   }
   window.scrollTo({ top: 0 });
+  planifierAvion();
 }
 
 function appliquerTheme() {
   let nuit;
+  const choix = etat.reglages.theme;
   const aujourdHui = etat.meteo?.jours?.[0];
   const hd = heureCourante();
-  if (aujourdHui?.sunrise && aujourdHui?.sunset) {
+  if (choix === "nuit" || choix === "jour") {
+    nuit = choix === "nuit";
+  } else if (aujourdHui?.sunrise && aujourdHui?.sunset) {
     nuit = hd < heureDecimale(aujourdHui.sunrise) || hd > heureDecimale(aujourdHui.sunset);
   } else {
     nuit = hd < 7 || hd >= 21;
@@ -1004,6 +1339,7 @@ async function init() {
   $("#btn-reglages").addEventListener("click", ouvrirReglages);
   $("#btn-niveau").addEventListener("click", ouvrirReglages);
   $("#btn-reglages-retour").addEventListener("click", () => { basculerVue("semaine"); rendreSemaine(); });
+  document.addEventListener("visibilitychange", planifierAvion);
   brancherReglages();
 
   // METAR + TAF et page du club lancés tout de suite, branchés dès qu'ils arrivent.
@@ -1023,7 +1359,13 @@ async function init() {
     afficherFraicheur();
     rendreSemaine();
     $("#chargement").hidden = true;
-    $("#vue-semaine").hidden = false;
+    if (etat.reglages.niveauChoisi) {
+      basculerVue("semaine");
+    } else {
+      rendreBienvenue();
+      basculerVue("bienvenue");
+    }
+    chargerAvion().then(planifierAvion);
 
     etat.aero = await aeroPromesse;
     etat.aeroCharge = true;

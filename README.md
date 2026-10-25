@@ -25,11 +25,17 @@ estimée, aucune pondération arbitraire.
 > club ne se prononce — et à savoir **quand décider** : le club publie
 > l'état des activités le matin même sur sa page météo, jamais la veille.
 
-## Ce que fait l'app (v2.4)
+## Ce que fait l'app (v2.5)
 
-**Écran d'accueil** — l'observation réelle de Charleroi (METAR), l'**état
-des activités publié par le club** (repris mot pour mot, avec le prochain
-point météo et le start prévu), puis une carte par jour d'ouverture : verdict, fenêtre horaire, nombre de sources
+**Premier lancement** — prénom (facultatif), niveau, nombre de sauts
+(facultatif). Tout reste sur le téléphone.
+
+**Écran d'accueil** — d'abord **la réponse** : le prochain de *mes* jours
+qui saute, pour mon niveau et ma marge (à défaut, le plus jouable, avec son
+motif). Puis **Maintenant** : l'état des activités publié par le club
+(repris mot pour mot), l'observation de Charleroi (METAR) et **l'avion du
+club en direct** (ADS-B, radar avec trace et altitude). Puis une ligne par
+jour d'ouverture : verdict, fenêtre horaire, nombre de sources
 qui valident toute la fenêtre (ex. « 5/5 »), règle en cause, tendance, et
 une bande horaire (couleur = verdict, hauteur = part des sources favorables).
 Les jours couverts seulement par les modèles 7-10 km sont étiquetés.
@@ -132,12 +138,14 @@ Aucun build, aucune dépendance, aucune clé API.
 
 ### Relais de la page du club (Cloudflare Worker)
 
-`relais/worker.js` lit la page météo **publique** du club
+`relais/worker.js` sert deux routes. `/club` lit la page météo **publique** du club
 (`paraclubnamur.be/fr/meteo` : pas d'API, pas de CORS) avec le même code
 que l'app (`js/club.js`) et renvoie du JSON. En ligne sur
 `https://vent4000-club.gaustar.workers.dev/club` (compte Cloudflare du
 mainteneur, offre gratuite). Copie gardée 2 min : au plus ~720 lectures par
-jour sur le site du club. Rien de l'espace membre n'est lu.
+jour sur le site du club. Rien de l'espace membre n'est lu. `/avion`
+interroge adsb.lol (adsb.fi en secours) autour d'EBNM et ne renvoie que les
+avions de largage proches (`js/avion.js`), copie gardée 10 s.
 
 ```bash
 cd relais && npx wrangler@4 deploy   # après `npx wrangler@4 login`
@@ -158,6 +166,9 @@ js/tendance.js            Évolution de la prévision entre 2 consultations (pur
 js/deplacement.js         « Ça vaut le trajet ? » — coût réel + quand décider (pur)
 js/carburant.js           Prix diesel officiel du jour (Statbel / SPF Économie)
 js/club.js                Page météo publique du club : lecture + chargement via le relais (pur)
+js/avion.js               Avion de largage en direct : filtre des positions ADS-B (pur)
+js/profil.js              Profil du membre : validation, migration, marge, mes jours, unités, export/import (pur)
+docs/DESIGN.md            Conception de l'interface (décisions, feuille de route club)
 js/fixtures/              Page du club relevée (tests)
 relais/                   Cloudflare Worker qui lit la page du club (CORS)
 js/*.test.mjs             Tests Node (npm test)

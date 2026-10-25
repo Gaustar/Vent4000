@@ -1,5 +1,7 @@
 # Vent4000 — Mise à niveau du design (conception actée le 2026-10-25)
 
+> **État : réalisé en v2.5.0** (2026-10-25), sauf mention contraire en §10.
+
 Ce document est la décision, écrite **avant** le code. Il ne change ni les
 règles, ni les seuils, ni le calcul du verdict (voir README). Il change ce
 que le membre voit en premier, et ce qui est à lui.
@@ -49,7 +51,7 @@ Principe : **verdict → fenêtre → pourquoi → détail**, chaque niveau repl
 ## 4. Thème et typographie
 
 - **Lisibilité dehors** d'abord : contraste ≥ 7:1 pour les valeurs clés (vent, fenêtre), ≥ 4,5:1 ailleurs, y compris en thème jour (le texte `encre-3` sera éclairci/assombri s'il passe sous 4,5:1).
-- **Échelle typographique** à 6 tailles (12 / 13,5 / 15 / 17 / 22 / 32), au lieu des tailles ponctuelles actuelles ; chiffres toujours en IBM Plex Mono tabulaire, titres en Barlow Condensed.
+- **Échelle typographique** à 7 tailles (11 / 12,5 / 13,5 / 15 / 17 / 22 / 30 px, jetons `--t-*`), au lieu des tailles ponctuelles ; chiffres toujours en IBM Plex Mono tabulaire, titres en Barlow Condensed.
 - **Cibles tactiles ≥ 44 px**, espacement sur la grille de 4 px déjà en place.
 - **Thème** : choix manuel nuit / jour / auto (auto = comportement actuel). Respect de `prefers-reduced-motion`. Marges `safe-area` pour l'encoche.
 - Verdict toujours **redondant** avec la couleur (●  ▲  ✕), pour le daltonisme (déjà le cas).
@@ -100,3 +102,25 @@ séparé. Aucun APK sans demande.
 - **Unité du vent** : la rafale « 43 km/h » devient « 23 kt » ; faut-il afficher les deux ? (proposition : l'unité choisie en grand, l'autre en petit.)
 - **Mes jours** : les jours fériés comptent-ils comme des week-ends ? (proposition : oui, une case « fériés » à part.)
 - **Nombre de sauts** : à mettre à jour à la main ; pas de rappel automatique.
+
+## 10. Ajouts décidés pendant la réalisation
+
+### Avion du club en direct (v2.5.0)
+
+- Source : réseaux ADS-B communautaires **adsb.lol** (ODbL) et **adsb.fi** en secours, gratuits et sans clé, mais sans CORS : interrogés par le relais (`/avion`, copie de 10 s), filtrés par `js/avion.js`.
+- Avion du club : immatriculation **F-GHGZ** (Cessna 208 Caravan, photographié à Namur de 2022 à 2025 ; capacité cohérente avec le site du club). **À reconfirmer** un jour d'opération. Un autre avion de largage (C208, PC-6, Twin Otter) à moins de 15 km et sous 18 000 ft est montré, sans être présenté comme celui du club.
+- Affichage : ligne « Avion » du bloc Maintenant (altitude, montée/descente, distance et direction, vitesse, âge du signal) et radar SVG maison (sans carte ni bibliothèque externe) avec trace et jauge d'altitude jusqu'au largage (4 km).
+- Honnêteté : « pas de signal » n'est jamais présenté comme « au sol ».
+- Sobriété : interrogation toutes les 15 s seulement un jour d'ouverture (7h → coucher + 45 min) ou quand un avion est en vue, toutes les 2 min sinon, et jamais quand l'accueil n'est pas à l'écran.
+
+### Nombre de sauts : saisie manuelle
+
+Le site du club ne s'ouvre qu'avec le mot de passe du membre : une synchronisation demanderait de confier ses identifiants au relais. Refusé. Champ manuel, sans effet sur le verdict.
+
+### Vers l'app officielle du club (feuille de route)
+
+1. Faire confirmer par le RT les 5 questions ouvertes du README (dont le « start prévu 8h30 »).
+2. Versions **néerlandaise et anglaise** (le site du club est en trois langues).
+3. Relais et dépôt transférés sur des comptes **du club** (aujourd'hui : comptes du mainteneur).
+4. Demander au club une **source officielle** (état des activités, limite de sauts) plutôt que la lecture de sa page publique.
+5. Page « Vie privée » : faite (réglages) ; aucune donnée personnelle ne quitte le téléphone.

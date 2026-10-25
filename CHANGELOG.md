@@ -4,6 +4,43 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [2.5.0] — 2026-10-25
+
+Mise à niveau du design (conception : `docs/DESIGN.md`) et app
+personnelle à chaque membre. Règles, seuils et calcul du verdict
+inchangés ; la seule personnalisation qui touche le verdict est la marge,
+qui ne peut que durcir.
+
+### Ajouté
+- **La réponse d'abord** : en tête de l'accueil, le prochain de *mes*
+  jours qui saute (sinon le plus jouable et son motif), avec le conseil de
+  trajet et la limite appliquée.
+- **Bloc « Maintenant »** : état du club, observation de Charleroi et
+  **avion du club en direct** (ADS-B via le relais `/avion` : altitude,
+  montée/descente, distance, vitesse, âge du signal ; radar SVG avec trace
+  et jauge jusqu'à l'altitude de largage). « Pas de signal » n'est jamais
+  présenté comme « au sol ».
+- **Profil** (`js/profil.js`) : prénom, nombre de sauts (rappelé à côté de
+  la limite de sauts du club les jours limites, sans effet sur le verdict),
+  **mes jours** (les autres jours restent visibles, en retrait), **marge**
+  sous la limite du brevet, thème nuit/jour/auto, **unité du vent**
+  (km/h, kt, m/s — affichage seulement). Migration automatique des anciens
+  réglages. **Export/import par code** pour changer d'appareil, sans serveur.
+- **Écran de bienvenue** au premier lancement (remplace la carte « Quel est
+  ton niveau ? »).
+- Vue Jour : **« Pourquoi »** (règles en cause et nombre d'heures
+  concernées), limite appliquée quand une marge est réglée.
+- Réglages en sections repliables, dont **Vie privée**.
+
+### Modifié
+- **Contrastes** mesurés et relevés à ≥ 4,5:1 partout, y compris vert,
+  ambre et rouge du thème jour (lecture en plein soleil) ; échelle
+  typographique à 7 tailles ; cibles tactiles de 44 px.
+- Jours d'ouverture en **lignes compactes**.
+
+### Tests
+99 tests (+ profil, avion).
+
 ## [2.4.0] — 2026-10-25
 
 La décision du club dans l'app. Calcul du verdict et seuils inchangés.
