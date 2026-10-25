@@ -84,7 +84,7 @@ Préparation d'une présentation au club : l'app ne suppose plus rien de
 celui qui l'ouvre. Règles, données et calcul du verdict inchangés.
 
 ### Modifié
-- **Trajet propre à chaque membre.** Le trajet Domicile → Temploux codé en
+- **Trajet propre à chaque membre.** Un trajet de domicile codé en
   dur est remplacé par un réglage facultatif (distance, durée,
   consommation), conservé sur le téléphone. Sans trajet, le conseil de
   déplacement reste, sans coût. Chaque élément n'est chiffré que s'il est
@@ -339,9 +339,9 @@ la même chose quand on habite à ~100 km de la DZ.
 
 ### Ajouté — arbitrage du déplacement (`js/deplacement.js`)
 
-- **Coût réel affiché** : Domicile → Paraclub Namur = ~100 km / 1h30 sans
-  péage (relevé Google Maps), soit **~200 km, ~3 h et ~30 €** de diesel par
-  tentative au prix belge actuel (2,50 €/L, record de septembre 2026).
+- **Coût réel affiché** : un aller-retour de plusieurs centaines de km
+  représente quelques heures et des dizaines d'euros de diesel par
+  tentative au prix belge de l'époque (record de septembre 2026).
   L'arbitrage devient concret au lieu de rester théorique.
 - **Conseil contextuel** — « Ça vaut le déplacement » / « Pari ouvert » /
   « Garde le créneau » / « Trop tôt pour décider » / « N'y va pas » —

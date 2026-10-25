@@ -4,7 +4,7 @@ Ce document est la décision, écrite **avant** le code. Il ne change ni les
 règles, ni les seuils, ni le calcul du verdict (voir README). Il change ce
 que le membre voit en premier, et ce qui est à lui.
 
-## 1. Décisions de le mainteneur
+## 1. Décisions du mainteneur
 
 | Point | Décision |
 |---|---|
@@ -21,7 +21,7 @@ données**, accent interactif bleu, aucun orange décoratif.
 
 De haut en bas :
 
-1. **Barre** : marque, puce de niveau, trajet (Maps), réglages. Inchangée, avec le prénom si renseigné (« Salut le mainteneur »).
+1. **Barre** : marque, puce de niveau, trajet (Maps), réglages. Inchangée, avec le prénom si renseigné (« Salut Léa »).
 2. **Réponse** — « Prochain jour qui saute pour toi » : jour, verdict, fenêtre, nombre de sources, « J+n ».
    - Calculée avec **mon niveau, mes jours et ma prudence** (§5).
    - Aucun jour qui saute : « Aucun jour favorable dans les 7 jours », puis le jour le moins mauvais et son motif. Jamais de case vide.
@@ -62,7 +62,7 @@ Ce que l'app sait déjà faire : niveau, trajet, carburant, vent max personnel
 
 | Fonction | Décision | Pourquoi |
 |---|---|---|
-| **Mon profil** : prénom, niveau, **nombre de sauts** | **Oui** (choix de le mainteneur) | Le club décide en sauts, pas en brevet. Le nombre de sauts s'affiche à côté du lien vers la limite du club les jours limites. Il ne change **jamais** le verdict. |
+| **Mon profil** : prénom, niveau, **nombre de sauts** | **Oui** (choix du mainteneur) | Le club décide en sauts, pas en brevet. Le nombre de sauts s'affiche à côté du lien vers la limite du club les jours limites. Il ne change **jamais** le verdict. |
 | **Mes jours** : jours où je peux venir | **Oui** | Réduit le bruit ; alimente « prochain jour qui saute pour toi » et le conseil de trajet. Simple : cases lun→dim (+ fériés). Un jour décoché reste consultable, réduit. |
 | **Ma prudence** | **Déjà là, à mieux montrer** | C'est le vent max personnel existant. Présenté comme une marge (« 0 / −3 / −5 km/h sous ma limite »), borné au palier du brevet, motif « ta marge perso » affiché quand elle décide. Jamais plus souple. |
 | **Mon écran** | **En partie** : thème (nuit/jour/auto) et **unité du vent** (km/h, nœuds, m/s) | Les textes de loi parlent en nœuds, le METAR aussi ; l'affichage change, **pas les seuils** (conversion exacte, tests). Choisir et réordonner les blocs : non (réglages à ne plus s'y retrouver, peu de valeur). |

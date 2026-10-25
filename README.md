@@ -135,8 +135,8 @@ Aucun build, aucune dépendance, aucune clé API.
 `relais/worker.js` lit la page météo **publique** du club
 (`paraclubnamur.be/fr/meteo` : pas d'API, pas de CORS) avec le même code
 que l'app (`js/club.js`) et renvoie du JSON. En ligne sur
-`https://vent4000-club.gaustar.workers.dev/club` (compte Cloudflare de
-le mainteneur, offre gratuite). Copie gardée 2 min : au plus ~720 lectures par
+`https://vent4000-club.gaustar.workers.dev/club` (compte Cloudflare du
+mainteneur, offre gratuite). Copie gardée 2 min : au plus ~720 lectures par
 jour sur le site du club. Rien de l'espace membre n'est lu.
 
 ```bash
@@ -326,7 +326,7 @@ rendues côté serveur, sans API ni en-tête CORS, et la version membres
 demande une connexion. **Depuis la v2.4**, un relais (voir « Déploiement »)
 lit la page **publique** : état des activités, point météo et planning
 s'affichent dans l'app. La limite de sauts reste réservée aux membres
-(choix de le mainteneur, 2026-10-25) : l'app renvoie vers la page membres et
+(choix du mainteneur, 2026-10-25) : l'app renvoie vers la page membres et
 précise que son calendrier est le calendrier **habituel**.
 
 **Le calendrier réel a des exceptions** que l'app ignore : club fermé le
