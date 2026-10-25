@@ -4,6 +4,30 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [2.6.0] — 2026-10-25
+
+Prête à être montrée au club : l'app parle à tout le monde (passager
+tandem, élève, famille), le technique passe derrière des menus. Calcul du
+verdict inchangé.
+
+### Modifié
+- **Langage courant partout** (`js/langage.js`) : « Vent trop fort pour
+  ton niveau », « Nuages trop bas », « Prévision lointaine : elle peut
+  encore changer », « Vent d'ouest 26 km/h · quelques nuages à 910 m ·
+  bonne visibilité », « L'avion du club vole · 3 780 m · en montée »,
+  « De 9h à 16h », « dans 6 jours ».
+- **Masqué par défaut** (visible en **mode expert**, Réglages ›
+  Affichage) : nombre de sources « x/y », METAR brut, altitude en pieds et
+  âge du signal de l'avion, explication MLAT, références réglementaires,
+  liste des modèles.
+- Vue Jour : nouvelle liste **« Heure par heure »** en clair (verdict,
+  vent, ce qui coince) ; tableau règle × heure, observation, TAF, détail
+  d'une heure, sources, vent en altitude et boussole de piste regroupés
+  dans **« Détails techniques »** (ouvert d'office en mode expert).
+
+### Tests
+104 tests (+ langage).
+
 ## [2.5.2] — 2026-10-25
 
 ### Ajouté

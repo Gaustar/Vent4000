@@ -16,7 +16,7 @@
   <header class="entete">
     <div class="entete-marque">
       <h1>Vent<span>4000</span></h1>
-      <p class="entete-sous">Paraclub de Namur · EBNM</p>
+      <p class="entete-sous">Paraclub de Namur</p>
     </div>
     <div class="entete-actions">
       <button id="btn-niveau" class="puce-niveau" title="Changer de niveau">
@@ -83,7 +83,7 @@
       </div>
 
       <h2 class="etiquette">Jours d'ouverture
-        <span class="hint">x/y = sources sans règle violée sur toute la fenêtre</span></h2>
+        <span class="hint technique">x/y = sources sans règle violée sur toute la fenêtre</span></h2>
       <div id="jours" class="jours"></div>
       <p id="note-calendrier" class="note-maj"></p>
 
@@ -110,7 +110,7 @@
             <p id="jour-verdict-texte" class="hero-verdict"></p>
             <p id="jour-verdict-quand" class="hero-quand"></p>
           </div>
-          <div class="hero-jauge" id="jour-jauge"></div>
+          <div class="hero-jauge technique" id="jour-jauge"></div>
         </div>
         <div id="jour-creneaux" class="creneaux"></div>
         <ul id="jour-pourquoi" class="pourquoi" hidden></ul>
@@ -119,10 +119,15 @@
         <p id="jour-experience" class="avert-experience" hidden></p>
       </article>
 
+      <h3 class="etiquette">Heure par heure <span class="hint">touche une heure pour le détail</span></h3>
+      <div id="jour-heures" class="heures"></div>
+
+      <details id="jour-technique" class="section technique-bloc">
+        <summary>Détails techniques</summary>
       <div id="jour-obs" class="obs" hidden></div>
       <div id="jour-taf" class="obs" hidden></div>
 
-      <h3 class="etiquette">Tableau horaire <span class="hint">touche une heure pour le détail</span></h3>
+      <h3 class="etiquette">Tableau règle × heure</h3>
       <div class="matrice-cadre">
         <table id="matrice" class="matrice"></table>
       </div>
@@ -155,6 +160,8 @@
           <div id="crosswind" class="piste-infos"></div>
         </div>
       </div>
+
+      </details>
 
       <a id="lien-briefing-jour" class="lien-bloc" target="_blank" rel="noopener">
         <span class="lien-bloc-texte"><strong>Page météo du club</strong> — état des activités et limite de sauts</span>
@@ -231,6 +238,11 @@
           <span id="reglage-theme-titre">Thème</span>
           <div id="reglage-theme" class="choix-segment"></div>
         </div>
+        <label class="case-option">
+          <input id="reglage-expert" type="checkbox">
+          <span><strong>Mode expert</strong> — afficher partout les détails techniques (sources, METAR,
+            tableau des règles, références réglementaires).</span>
+        </label>
         <div class="champ" role="group" aria-labelledby="reglage-unite-titre">
           <span id="reglage-unite-titre">Unité du vent</span>
           <div id="reglage-unite" class="choix-segment"></div>
@@ -340,7 +352,8 @@
       <a id="lien-windy" target="_blank" rel="noopener">Windy</a>
       <a id="lien-club" target="_blank" rel="noopener">Paraclub</a>
     </nav>
-    <p class="pied-note">Open-Meteo · MET Norway (METAR/TAF) · ADS-B adsb.lol (ODbL) · outil indépendant, sans valeur officielle · <span id="version"></span></p>
+    <p class="pied-note">Outil indépendant : la décision de sauter appartient au club et aux moniteurs · <span id="version"></span></p>
+    <p class="pied-note technique">Données : Open-Meteo, MET Norway (METAR/TAF), Statbel, page publique du club, ADS-B adsb.lol (ODbL) / adsb.fi.</p>
   </footer>
 
   <script type="module" src="./js/app.js"></script>

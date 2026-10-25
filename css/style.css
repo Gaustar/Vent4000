@@ -672,3 +672,33 @@ button { font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* ============================================================
+   v2.6 — Grand public d'abord, technique sur demande
+   ============================================================ */
+body:not(.expert) .technique { display: none !important; }
+.technique-bloc > summary { color: var(--encre-2); }
+.technique-bloc > .etiquette:first-of-type { margin-top: var(--sp-2); }
+.hero-confiance { font-size: var(--t-s); color: var(--encre-2); }
+.case-option { display: flex; gap: var(--sp-3); align-items: flex-start; margin-bottom: var(--sp-4); font-size: var(--t-s); color: var(--encre-2); cursor: pointer; }
+.case-option input { width: 22px; height: 22px; margin: 2px 0 0; flex-shrink: 0; accent-color: var(--accent); }
+.case-option strong { color: var(--encre); }
+
+/* Heure par heure */
+.heures { display: grid; gap: 4px; }
+.heure {
+  display: grid; grid-template-columns: 3.2em 1.4em 1fr; align-items: baseline; gap: var(--sp-2);
+  width: 100%; min-height: var(--cible); padding: 8px var(--sp-3); text-align: left; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--bord); border-radius: var(--r-s);
+}
+.heure:hover, .heure[aria-pressed="true"] { border-color: var(--accent); }
+.heure-h { font-family: var(--mono); font-weight: 600; }
+.heure-s { font-size: var(--t-l); }
+.heure.vert .heure-s { color: var(--vert); }
+.heure.orange .heure-s { color: var(--ambre); }
+.heure.rouge .heure-s { color: var(--rouge); }
+.heure-txt { font-size: var(--t-s); color: var(--encre-2); }
+.heure-txt b { color: var(--encre); font-weight: 600; }
+.heure-raison { display: block; font-size: var(--t-xs); }
+.heure.rouge .heure-raison { color: var(--rouge); }
+.heure.orange .heure-raison { color: var(--ambre); }

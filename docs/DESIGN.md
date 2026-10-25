@@ -105,6 +105,10 @@ séparé. Aucun APK sans demande.
 
 ## 10. Ajouts décidés pendant la réalisation
 
+### Grand public d'abord (v2.6.0)
+
+Demande du mainteneur pour la présentation au club : « afficher les données utiles à tout le monde, rien de technique ; menus cachés pour les infos plus techniques ; adapté au grand public ». Toutes les données restent dans l'app ; le **mode expert** (réglage) réaffiche partout le détail technique (`.technique`), et la vue Jour garde un menu « Détails techniques ». Les phrases en clair (`js/langage.js`) traduisent, elles ne décident rien.
+
 ### Avion du club en direct (v2.5.0)
 
 - Source : réseaux ADS-B communautaires **adsb.lol** (ODbL) et **adsb.fi** en secours, gratuits et sans clé, mais sans CORS : interrogés par le relais (`/avion`, copie de 10 s), filtrés par `js/avion.js`.

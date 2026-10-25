@@ -25,7 +25,12 @@ estimée, aucune pondération arbitraire.
 > club ne se prononce — et à savoir **quand décider** : le club publie
 > l'état des activités le matin même sur sa page météo, jamais la veille.
 
-## Ce que fait l'app (v2.5)
+## Ce que fait l'app (v2.6)
+
+**Pour tout le monde** : phrases en clair, aucun jargon à l'écran. Le
+détail technique (sources, METAR, tableau des règles, références) est dans
+« Détails techniques » ou s'affiche partout en **mode expert** (Réglages).
+
 
 **Premier lancement** — prénom (facultatif), niveau, nombre de sauts
 (facultatif). Tout reste sur le téléphone.
@@ -167,6 +172,7 @@ js/deplacement.js         « Ça vaut le trajet ? » — coût réel + quand dé
 js/carburant.js           Prix diesel officiel du jour (Statbel / SPF Économie)
 js/club.js                Page météo publique du club : lecture + chargement via le relais (pur)
 js/avion.js               Avion de largage en direct : filtre des positions ADS-B (pur)
+js/langage.js             Données et règles traduites en phrases courtes (pur)
 js/profil.js              Profil du membre : validation, migration, marge, mes jours, unités, export/import (pur)
 docs/DESIGN.md            Conception de l'interface (décisions, feuille de route club)
 js/fixtures/              Page du club relevée (tests)

@@ -42,6 +42,7 @@ export function profilParDefaut() {
     theme: "auto",
     unite: "kmh",
     maPosition: false,   // « Me situer » sur le radar : la position reste sur le téléphone
+    expert: false,       // détails techniques affichés partout (moniteurs, curieux)
     trajet: null,
   };
 }
@@ -94,6 +95,7 @@ export function normaliserProfil(brut) {
   if (THEMES[brut.theme]) p.theme = brut.theme;
   if (UNITES_VENT[brut.unite]) p.unite = brut.unite;
   p.maPosition = brut.maPosition === true;
+  p.expert = brut.expert === true;
   p.trajet = nettoyerTrajet(brut.trajet);
   return p;
 }

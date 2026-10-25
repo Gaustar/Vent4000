@@ -200,4 +200,4 @@ export const RELAIS_CLUB = "https://vent4000-club.gaustar.workers.dev/club";
 // Avion de largage en direct (ADS-B adsb.lol / adsb.fi, filtré par js/avion.js).
 export const RELAIS_AVION = "https://vent4000-club.gaustar.workers.dev/avion";
 
-export const VERSION = "2.5.2";
+export const VERSION = "2.6.0";
