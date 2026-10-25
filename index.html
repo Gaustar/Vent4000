@@ -42,6 +42,7 @@
     <!-- ============ Vue Semaine ============ -->
     <section id="vue-semaine" hidden>
       <div id="obs" class="obs" hidden></div>
+      <div id="club" class="obs club" hidden></div>
 
       <div id="choix-niveau" class="bloc choix-niveau" hidden>
         <h2 class="etiquette">Quel est ton niveau ?</h2>
@@ -54,8 +55,7 @@
       <h2 class="etiquette">Jours d'ouverture
         <span class="hint">x/y = sources sans règle violée sur toute la fenêtre</span></h2>
       <div id="jours" class="jours"></div>
-      <p class="note-maj">Jours d'ouverture habituels du club. Les fermetures
-        exceptionnelles n'y figurent pas : les vrais jours sont sur la page météo du club.</p>
+      <p id="note-calendrier" class="note-maj"></p>
 
       <a id="lien-briefing" class="lien-bloc" target="_blank" rel="noopener">
         <span class="lien-bloc-texte"><strong>Page météo du club</strong> — état des activités, limite de sauts, vrais jours d'ouverture</span>

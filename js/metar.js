@@ -51,7 +51,9 @@ export function lireConditions(tokens) {
     if (/^\d{4}[NSEW]{1,2}$/.test(tok)) continue;
     m = /^(FEW|SCT|BKN|OVC)(\d{3})(CB|TCU|\/\/\/)?$/.exec(tok);
     if (m) {
-      nuages.push({ couverture: m[1], baseM: Math.round(Number(m[2]) * 100 * FT), cb: m[3] === "CB" || m[3] === "TCU" });
+      // TCU (cumulus bourgeonnant) est traité comme un CB pour le verdict,
+      // par prudence, mais garde son nom pour l'affichage (`convectif`).
+      nuages.push({ couverture: m[1], baseM: Math.round(Number(m[2]) * 100 * FT), cb: m[3] === "CB" || m[3] === "TCU", convectif: m[3] === "CB" || m[3] === "TCU" ? m[3] : null });
       ciel = true;
       continue;
     }
@@ -82,6 +84,7 @@ export function lireConditions(tokens) {
     const plafonds = nuages.filter((n) => n.couverture === "BKN" || n.couverture === "OVC" || n.couverture === "VV");
     c.plafond = plafonds.length ? Math.min(...plafonds.map((n) => n.baseM)) : Infinity;
     c.cb = nuages.some((n) => n.cb);
+    c.convectif = nuages.some((n) => n.convectif === "CB") ? "CB" : nuages.some((n) => n.convectif === "TCU") ? "TCU" : null;
   }
   if (tempsDit) {
     c.temps = temps;
@@ -133,7 +136,7 @@ export function parseMetar(brut, maintenant = new Date()) {
     station, obs, brut,
     dir: c.dir ?? null, vent: c.vent ?? null, rafales: c.rafales ?? null, variable: !!c.variable,
     visibilite: c.visibilite ?? null, cavok: !!c.cavok,
-    nuages: c.nuages ?? [], plafond: c.plafond ?? Infinity, cb: !!c.cb,
+    nuages: c.nuages ?? [], plafond: c.plafond ?? Infinity, cb: !!c.cb, convectif: c.convectif ?? null,
     temps: c.temps ?? [], orage: !!c.orage, precip: !!c.precip, brouillard: !!c.brouillard,
     temp: c.temp ?? null, pointRosee: c.pointRosee ?? null,
   };

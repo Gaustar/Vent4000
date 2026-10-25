@@ -1,9 +1,10 @@
 // ============================================================
-// Vent4000 — Application (UI) v2.1
+// Vent4000 — Application (UI) v2.4
 // ============================================================
 
-import { DZ, NIVEAUX_PRATIQUE, LIENS, VERSION, LEGAL_BE, AERODROME, MODELES } from "./config.js";
-import { statutOuverture } from "./ouverture.js";
+import { DZ, NIVEAUX_PRATIQUE, LIENS, RELAIS_CLUB, VERSION, LEGAL_BE, AERODROME, MODELES } from "./config.js";
+import { ouvertureReelle, fermeParLeClub } from "./ouverture.js";
+import { chargerClub } from "./club.js";
 import { scoreHeure, fenetreSautable, meilleurVerdict, ventPiste } from "./scoring.js";
 import { ageMetar } from "./metar.js";
 import { comparerPrevisions, doitRemplacerInstantane } from "./tendance.js";
@@ -27,6 +28,7 @@ const etat = {
   reglages: chargerReglages(),
   instantanes: chargerInstantanes(),
   carburant: null,
+  club: null,               // page météo publique du club, via le relais (club.js)
 };
 
 function chargerReglages() {
@@ -190,7 +192,7 @@ let memoJours = { cle: null, valeur: null };
 
 function joursOuvertsScores() {
   const seuils = seuilsActifs();
-  const cle = [etat.meteo?.recupereLe, etat.aero.metar?.brut, etat.aero.taf?.brut, seuils.label, seuils.ventMax,
+  const cle = [etat.meteo?.recupereLe, etat.aero.metar?.brut, etat.aero.taf?.brut, etat.club?.recu, seuils.label, seuils.ventMax,
                todayIso(), Math.floor(heureCourante())].join("|");
   if (memoJours.cle === cle) return memoJours.valeur;
   const valeur = calculerJoursOuverts(seuils);
@@ -206,7 +208,7 @@ function calculerJoursOuverts(seuils) {
 
   etat.meteo.jours.forEach((jour, index) => {
     const date = dateLocale(jour.date);
-    const ouverture = statutOuverture(date);
+    const ouverture = ouvertureReelle(date, etat.club);
     if (!ouverture) return;
 
     const estAujourdhui = jour.date === aujourdhui;
@@ -361,6 +363,49 @@ function rendreTaf(el, jour) {
     <code class="taf-brut">${echapper(t.brut)}</code>`;
 }
 
+/**
+ * État des activités publié par le club (page publique, via le relais).
+ * Repris mot pour mot : c'est la décision du club, l'app ne l'interprète
+ * pas et ne le mêle jamais à son verdict.
+ */
+function rendreClub(el) {
+  const c = etat.club;
+  if (!el) return;
+  if (!c?.etat) { el.hidden = true; return; }
+  const ageMin = Math.max(0, Math.round((Date.now() - new Date(c.recu).getTime()) / 60000));
+  const perime = c.source === "cache";
+  const prochain = (c.jours ?? []).find((j) => j.date >= todayIso());
+  const ton = c.etat.ton ?? "neutre";
+  el.hidden = false;
+  el.innerHTML = `
+    <div class="obs-haut">
+      <span class="obs-titre"><span class="obs-point club-ton-${ton}"></span>Paraclub · état des activités</span>
+      <span class="obs-age${perime ? " perime" : ""}">${perime ? "hors ligne · " : ""}lu il y a ${ageMin} min</span>
+    </div>
+    <p class="club-etat club-ton-${ton}">${echapper(c.etat.libelle)}</p>
+    ${c.etat.message.map((p) => `<p class="club-message">${echapper(p)}</p>`).join("")}
+    ${prochain ? `<p class="club-detail">Prochain jour : <b>${echapper(prochain.jour.toLowerCase())} ${Number(prochain.date.slice(8))} ${MOIS_FR[Number(prochain.date.slice(5, 7)) - 1]}</b>
+      · point météo ${prochain.pointMeteo ? `<b>${echapper(prochain.pointMeteo)}</b>` : "pas encore annoncé"}
+      ${prochain.start ? `· start prévu <b>${echapper(prochain.start)}</b>` : ""}</p>` : ""}
+    ${c.maj ? `<p class="club-detail">Mis à jour par le club : ${echapper(c.maj)}</p>` : ""}`;
+}
+
+/** Note sous la liste : d'où vient le calendrier affiché. */
+function rendreNoteCalendrier(el) {
+  const jours = etat.club?.jours ?? [];
+  if (!jours.length) {
+    el.textContent = "Jours d'ouverture habituels du club. Les fermetures exceptionnelles n'y figurent pas : les vrais jours sont sur la page météo du club.";
+    return;
+  }
+  const dernier = jours.map((j) => j.date).sort().at(-1);
+  const fermes = etat.meteo.jours
+    .map((j) => dateLocale(j.date))
+    .filter((d) => fermeParLeClub(d, etat.club))
+    .map((d) => `${JOURS_FR[d.getDay()].toLowerCase()} ${d.getDate()} ${MOIS_FR[d.getMonth()]}`);
+  el.textContent = `Jours confirmés par le club jusqu'au ${Number(dernier.slice(8))} ${MOIS_FR[Number(dernier.slice(5, 7)) - 1]} ; au-delà, jours habituels.`
+    + (fermes.length ? ` Fermé selon le club : ${fermes.join(", ")}.` : "");
+}
+
 // ------------------------------------------------------------
 // Vue Semaine
 // ------------------------------------------------------------
@@ -377,6 +422,8 @@ function rendreSemaine() {
   const jours = joursOuvertsScores();
   $("#niveau-actif").textContent = seuilsActifs().label;
   rendreObservation($("#obs"));
+  rendreClub($("#club"));
+  rendreNoteCalendrier($("#note-calendrier"));
   rendreChoixNiveau();
 
   const conteneur = $("#jours");
@@ -406,6 +453,8 @@ function rendreSemaine() {
           <span class="cj-nom">${JOURS_FR[j.date.getDay()]}</span>
           <span class="cj-date">${j.date.getDate()} ${MOIS_FR[j.date.getMonth()]}</span>
           ${j.ouverture.type === "ferie" ? `<span class="etiq-jour">Férié</span>` : ""}
+          ${j.ouverture.type === "club" ? `<span class="etiq-jour">Ouverture exceptionnelle</span>` : ""}
+          ${j.ouverture.pointMeteo ? `<span class="etiq-jour">Point météo ${echapper(j.ouverture.pointMeteo)}</span>` : ""}
           ${j.precision !== "hr" ? `<span class="etiq-jour">${j.precision === "regional" ? "Modèles 7-10 km" : "En partie 7-10 km"}</span>` : ""}
           ${rendreTendance(j.tendance)}
         </span>
@@ -506,8 +555,11 @@ function rendreJour() {
 
   $("#jour-titre").textContent =
     `${JOURS_FR[info.date.getDay()]} ${info.date.getDate()} ${MOIS_FR[info.date.getMonth()]}`;
-  $("#jour-soustitre").textContent =
-    `${info.ouverture.type === "vendredi" ? "Ouverture dès 16h" : "Ouvert dès 8h30, premiers sauts 9h"} → coucher ${heureDe(jour.sunset)} · J+${info.index}`;
+  const o = info.ouverture;
+  const texteOuverture = o.source === "club"
+    ? `Confirmé par le club${o.start ? ` · start prévu ${o.start}` : ""}${o.pointMeteo ? ` · point météo ${o.pointMeteo}` : ""}`
+    : o.type === "vendredi" ? "Ouverture dès 16h" : "Ouvert dès 8h30, premiers sauts 9h";
+  $("#jour-soustitre").textContent = `${texteOuverture} → coucher ${heureDe(jour.sunset)} · J+${info.index}`;
 
   $("#jour-verdict").className = `hero ${info.verdictJour}`;
   $("#jour-verdict-texte").innerHTML =
@@ -554,7 +606,7 @@ function rendreJour() {
 // ------------------------------------------------------------
 // Tableau horaire
 // ------------------------------------------------------------
-const tempsCourt = (c) => (c.orage ? "TS" : c.cb ? "CB" : c.precip ? "RA" : c.brouillard ? "FG" : null);
+const tempsCourt = (c) => (c.orage ? "TS" : c.cb ? (c.convectif ?? "CB") : c.precip ? "RA" : c.brouillard ? "FG" : null);
 
 const LIGNES = [
   { cle: "verdict", label: "Verdict" },
@@ -572,7 +624,7 @@ const LIGNES = [
       const v = ss.map((s) => s.conditions.visibilite).filter((x) => x != null);
       return v.length ? court(Math.min(...v)) : "—";
     } },
-  { regle: "orage", label: "Orage", val: (ss) => (ss.some((s) => s.conditions.orage) ? "TS" : ss.some((s) => s.conditions.cb) ? "CB" : "—") },
+  { regle: "orage", label: "Orage", val: (ss) => (ss.some((s) => s.conditions.orage) ? "TS" : ss.some((s) => s.conditions.cb) ? (ss.some((s) => s.conditions.convectif === "CB") ? "CB" : "TCU") : "—") },
   { regle: "pluie", label: "Précip.", val: (ss) => (ss.some((s) => s.conditions.precip) ? (ss.map((s) => tempsCourt(s.conditions)).find((x) => x === "RA") ?? "oui") : "—") },
   { cle: "precision", label: "Données" },
 ];
@@ -895,7 +947,8 @@ async function rechargerDonnees() {
   rechargementEnCours = true;
   derniereTentative = Date.now();
   try {
-    const [meteo, aero] = await Promise.allSettled([chargerMeteo(), chargerAero()]);
+    const [meteo, aero, club] = await Promise.allSettled([chargerMeteo(), chargerAero(), chargerClub(RELAIS_CLUB)]);
+    if (club.status === "fulfilled") etat.club = club.value;
     if (aero.status === "fulfilled") {
       etat.aero = aero.value;
       etat.aeroCharge = true;
@@ -953,8 +1006,12 @@ async function init() {
   $("#btn-reglages-retour").addEventListener("click", () => { basculerVue("semaine"); rendreSemaine(); });
   brancherReglages();
 
-  // METAR + TAF lancés tout de suite, branchés dès qu'ils arrivent.
+  // METAR + TAF et page du club lancés tout de suite, branchés dès qu'ils arrivent.
   const aeroPromesse = chargerAero();
+  chargerClub(RELAIS_CLUB).then((club) => {
+    etat.club = club;
+    if (etat.meteo) rafraichirVueCourante();
+  });
   derniereTentative = Date.now();
 
   try {

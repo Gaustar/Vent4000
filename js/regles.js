@@ -120,7 +120,7 @@ export function evaluerSource(c, seuils) {
 
   // Orage / cumulonimbus.
   if (c.orage) set("orage", "echec", "orage");
-  else if (c.cb) set("orage", "limite", "cumulonimbus");
+  else if (c.cb) set("orage", "limite", c.convectif === "TCU" ? "cumulus bourgeonnant (TCU)" : "cumulonimbus");
   else if (c.orage === false) set("orage", "ok", "non");
   else set("orage", "inconnu", "—");
 
@@ -149,6 +149,7 @@ export function conditionsAero(cond) {
     orage: !!cond.orage,
     precip: !!cond.precip,
     cb: !!cond.cb,
+    convectif: cond.convectif ?? (cond.cb ? "CB" : null),
     temps: cond.temps ?? [],
   };
 }

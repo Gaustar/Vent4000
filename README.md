@@ -25,10 +25,11 @@ estimée, aucune pondération arbitraire.
 > club ne se prononce — et à savoir **quand décider** : le club publie
 > l'état des activités le matin même sur sa page météo, jamais la veille.
 
-## Ce que fait l'app (v2.2)
+## Ce que fait l'app (v2.4)
 
-**Écran d'accueil** — l'observation réelle de Charleroi (METAR), puis une
-carte par jour d'ouverture : verdict, fenêtre horaire, nombre de sources
+**Écran d'accueil** — l'observation réelle de Charleroi (METAR), l'**état
+des activités publié par le club** (repris mot pour mot, avec le prochain
+point météo et le start prévu), puis une carte par jour d'ouverture : verdict, fenêtre horaire, nombre de sources
 qui valident toute la fenêtre (ex. « 5/5 »), règle en cause, tendance, et
 une bande horaire (couleur = verdict, hauteur = part des sources favorables).
 Les jours couverts seulement par les modèles 7-10 km sont étiquetés.
@@ -105,6 +106,20 @@ Vérifié sur paraclubnamur.be (voir §3 du cadre réglementaire) :
   créneau continu, 9h → coucher du soleil.
 - Vendredis de mai à septembre : créneau unique dès 16h.
 
+**Planning réel du club (v2.4).** Quand le relais répond, les jours listés
+par le club sur sa page météo publique priment sur ce calendrier habituel
+(`ouvertureReelle`, `js/ouverture.js`) :
+
+- jour listé : ouvert, même hors calendrier habituel (« ouverture
+  exceptionnelle », une journée continue) ; un « start prévu » plus
+  tardif que 9h00 décale le début des créneaux ;
+- jour habituel **absent** d'un planning qui le couvre (du lendemain de
+  la lecture au dernier jour listé) : fermé, et signalé sous la liste ;
+- le jour même n'est jamais déclaré fermé par absence (à vérifier un jour
+  d'opération : la page liste-t-elle le jour en cours ?) ;
+- relais en panne, hors-ligne sans copie de moins de 12 h, ou au-delà du
+  dernier jour listé : calendrier habituel, annoncé comme tel.
+
 ## Déploiement (GitHub Pages)
 
 ```bash
@@ -114,6 +129,19 @@ git push -u origin main
 ```
 Puis Settings → Pages → Deploy from branch → `main` / root.
 Aucun build, aucune dépendance, aucune clé API.
+
+### Relais de la page du club (Cloudflare Worker)
+
+`relais/worker.js` lit la page météo **publique** du club
+(`paraclubnamur.be/fr/meteo` : pas d'API, pas de CORS) avec le même code
+que l'app (`js/club.js`) et renvoie du JSON. En ligne sur
+`https://vent4000-club.gaustar.workers.dev/club` (compte Cloudflare de
+le mainteneur, offre gratuite). Copie gardée 2 min : au plus ~720 lectures par
+jour sur le site du club. Rien de l'espace membre n'est lu.
+
+```bash
+cd relais && npx wrangler@4 deploy   # après `npx wrangler@4 login`
+```
 
 ## Architecture
 
@@ -129,6 +157,9 @@ js/ouverture.js           Calendrier du club (pur)
 js/tendance.js            Évolution de la prévision entre 2 consultations (pur)
 js/deplacement.js         « Ça vaut le trajet ? » — coût réel + quand décider (pur)
 js/carburant.js           Prix diesel officiel du jour (Statbel / SPF Économie)
+js/club.js                Page météo publique du club : lecture + chargement via le relais (pur)
+js/fixtures/              Page du club relevée (tests)
+relais/                   Cloudflare Worker qui lit la page du club (CORS)
 js/*.test.mjs             Tests Node (npm test)
 js/app.js                 UI et état
 sw.js                     Service worker (offline, réseau d'abord pour la météo)
@@ -292,7 +323,10 @@ l'app ouvre). On y trouve :
 
 Ce que l'app ne peut pas en tirer automatiquement : les pages sont
 rendues côté serveur, sans API ni en-tête CORS, et la version membres
-demande une connexion. L'app renvoie donc vers la page membres et
+demande une connexion. **Depuis la v2.4**, un relais (voir « Déploiement »)
+lit la page **publique** : état des activités, point météo et planning
+s'affichent dans l'app. La limite de sauts reste réservée aux membres
+(choix de le mainteneur, 2026-10-25) : l'app renvoie vers la page membres et
 précise que son calendrier est le calendrier **habituel**.
 
 **Le calendrier réel a des exceptions** que l'app ignore : club fermé le

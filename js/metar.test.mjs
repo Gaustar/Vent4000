@@ -23,6 +23,7 @@ test("parseMetar : CAVOK, orage, CB, brouillard VV ; la tendance n'est pas une o
   assert.equal(ts.orage, true);
   assert.equal(ts.precip, true);
   assert.equal(ts.cb, true);
+  assert.equal(ts.convectif, "CB");
   const fg = parseMetar("METAR EBCI 010650Z 00000KT 0300 FG VV001 10/10 Q1024", NOW);
   assert.equal(fg.brouillard, true);
   assert.equal(fg.plafond, 30);
@@ -72,4 +73,12 @@ test("conditionsTaf : base, BECMG terminé appliqué, TEMPO/PROB en variante, FM
   assert.equal(apres.principal.rafales, 52);
   assert.equal(apres.principal.plafond, Infinity);
   assert.equal(conditionsTaf(t, h(3, 13), h(3, 14)), null);
+});
+
+test("TCU : prudence comme un CB pour le verdict, mais nommé TCU (TAF EBCI du 2026-10-25)", () => {
+  const taf = parseTaf("TAF EBCI 251100Z 2512/2618 26018G30KT 9999 FEW025TCU SCT040 BECMG 2519/2521 22012KT PROB40 TEMPO 2615/2618 4000 -RADZ SCT008 BKN012", new Date("2026-10-25T15:00:00Z"));
+  assert.equal(taf.base.cb, true);
+  assert.equal(taf.base.convectif, "TCU");
+  const mixte = parseMetar("EBCI 011250Z 24015KT 9999 FEW020TCU SCT030CB 18/12 Q1010", NOW);
+  assert.equal(mixte.convectif, "CB");
 });

@@ -4,6 +4,35 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [2.4.0] — 2026-10-25
+
+La décision du club dans l'app. Calcul du verdict et seuils inchangés.
+
+### Ajouté
+- **État des activités du club** sur l'écran d'accueil, repris mot pour
+  mot de la page météo publique du Paraclub : libellé, message, prochain
+  jour avec l'heure du point météo et le start prévu, date de mise à jour
+  du club, âge de la lecture (« hors ligne » si c'est une copie).
+- **Planning réel** : les jours listés par le club priment sur le
+  calendrier habituel. Fermetures (jour habituel absent du planning → retiré et
+  signalé), ouvertures exceptionnelles (« Ouverture exceptionnelle »),
+  point météo sur la carte du jour, « Confirmé par le club » dans la vue
+  Jour. Au-delà du dernier jour listé, calendrier habituel.
+- **Relais Cloudflare** (`relais/`) : le site du club n'a ni API ni CORS.
+  Page publique seulement (la limite de sauts de l'espace membre n'est
+  pas reprise), copie de 2 min, User-Agent « Vent4000-relais ».
+- `js/club.js` (pur, partagé relais/app) et 6 tests, dont la page réelle
+  relevée le 2026-10-25.
+
+### Corrigé
+- **TCU n'est plus appelé « cumulonimbus »** : un cumulus bourgeonnant
+  (TCU) reste traité comme un CB pour le verdict (orange, par prudence),
+  mais l'app l'affiche « cumulus bourgeonnant (TCU) » / « TCU ». Trouvé
+  sur le TAF EBCI du 2026-10-25 (`FEW025TCU`).
+
+### Tests
+90 tests.
+
 ## [2.3.1] — 2026-10-25
 
 Le Paraclub a refait sa page météo (publique et espace membre). Relue en

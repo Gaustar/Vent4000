@@ -194,4 +194,8 @@ export const LIENS = {
   briefing: "https://pro.paraclubnamur.be/fr/meteo",
 };
 
-export const VERSION = "2.3.1";
+// Relais de la page météo publique du club (relais/worker.js, Cloudflare).
+// En panne ou hors-ligne (sans copie de moins de 12 h) : calendrier habituel.
+export const RELAIS_CLUB = "https://vent4000-club.gaustar.workers.dev/club";
+
+export const VERSION = "2.4.0";

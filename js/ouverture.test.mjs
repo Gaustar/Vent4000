@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { paques, feriesBelges, estFerie, dansSaison, statutOuverture, changementHeureOctobre, journeeContinue } from "./ouverture.js";
+import { paques, feriesBelges, estFerie, dansSaison, statutOuverture, changementHeureOctobre, journeeContinue,
+  ouvertureReelle, fermeParLeClub } from "./ouverture.js";
 
 test("Pâques 2026 tombe le 5 avril (vérifié via référence liturgique)", () => {
   const p = paques(2026);
@@ -119,4 +120,35 @@ test("Pâques 2027 tombe le 28 mars (vérification croisée sur une 3e année)",
   const p = paques(2027);
   assert.equal(p.getMonth(), 2);
   assert.equal(p.getDate(), 28);
+});
+
+test("ouvertureReelle : planning du club prioritaire sur le calendrier habituel", () => {
+  const club = {
+    recu: "2026-10-25T09:58:00Z",
+    jours: [
+      { date: "2026-10-31", jour: "Samedi", pointMeteo: "7h30", start: "8h30", note: null },
+      { date: "2026-11-04", jour: "Mercredi", pointMeteo: null, start: "10h", note: null },
+      { date: "2026-11-08", jour: "Dimanche", pointMeteo: null, start: "11h", note: null },
+    ],
+  };
+  // Jour habituel confirmé : créneaux habituels (start 8h30 < premier saut 9h → inchangé).
+  const sam = ouvertureReelle(new Date(2026, 9, 31), club);
+  assert.equal(sam.source, "club");
+  assert.equal(sam.pointMeteo, "7h30");
+  assert.equal(sam.creneaux[0].debut, 9);
+  // Ouverture exceptionnelle un mercredi : une journée dès le start annoncé.
+  const mer = ouvertureReelle(new Date(2026, 10, 4), club);
+  assert.equal(mer.type, "club");
+  assert.equal(mer.creneaux[0].debut, 10);
+  // Start plus tardif que 9h : la journée commence au start.
+  assert.equal(ouvertureReelle(new Date(2026, 10, 8), club).creneaux[0].debut, 11);
+  // Week-end habituel absent du planning qui le couvre : fermé.
+  assert.equal(ouvertureReelle(new Date(2026, 10, 1), club), null);
+  assert.equal(fermeParLeClub(new Date(2026, 10, 1), club), true);
+  assert.equal(fermeParLeClub(new Date(2026, 10, 2), club), false); // lundi : pas un jour habituel
+  // Au-delà du planning, ou sans planning : calendrier habituel.
+  assert.equal(ouvertureReelle(new Date(2026, 10, 14), club).source, "habituel");
+  assert.equal(ouvertureReelle(new Date(2026, 10, 1), null).source, "habituel");
+  // Jour de lecture absent du planning : jamais déclaré fermé.
+  assert.equal(ouvertureReelle(new Date(2026, 9, 25), club).source, "habituel");
 });

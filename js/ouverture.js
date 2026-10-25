@@ -6,6 +6,7 @@
 // ============================================================
 
 import { OUVERTURE } from "./config.js";
+import { planningClub, heureClub } from "./club.js";
 
 /** Dimanche de Pâques (algorithme grégorien anonyme / Meeus). */
 export function paques(annee) {
@@ -128,4 +129,43 @@ export function statutOuverture(date) {
     };
   }
   return null;
+}
+
+const isoLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/**
+ * Le club a-t-il retiré ce jour habituel de son planning ? (fermeture
+ * exceptionnelle, cf. planningClub dans club.js)
+ */
+export function fermeParLeClub(date, club) {
+  return !!statutOuverture(date) && planningClub(isoLocal(date), club) === "ferme";
+}
+
+/**
+ * Statut d'ouverture réel : le planning publié par le club s'il couvre
+ * la date, sinon le calendrier habituel (`source: "habituel"`).
+ *  - jour listé par le club : ouvert, même hors calendrier habituel
+ *    (ouverture exceptionnelle → une journée continue) ; si le « start
+ *    prévu » est plus tardif que le premier créneau, les créneaux
+ *    commencent à cette heure. Un start plus matinal ne change rien :
+ *    l'app garde 9h00 (premier saut) tant que le RT n'a pas précisé.
+ *  - jour habituel absent d'un planning qui le couvre : fermé (null).
+ */
+export function ouvertureReelle(date, club = null) {
+  const habituel = statutOuverture(date);
+  const iso = isoLocal(date);
+  const planning = planningClub(iso, club);
+  if (planning === "ferme") return null;
+  if (planning !== "ouvert") return habituel ? { ...habituel, source: "habituel" } : null;
+
+  const jourClub = club.jours.find((j) => j.date === iso);
+  const start = heureClub(jourClub.start);
+  const base = habituel ?? {
+    type: "club",
+    creneaux: [{ id: "journee", label: "Ouverture annoncée par le club", debut: OUVERTURE.heurePremierSaut, fin: null }],
+  };
+  const creneaux = base.creneaux
+    .map((c) => (start != null && start > c.debut ? { ...c, debut: start } : c))
+    .filter((c) => c.fin == null || c.debut < c.fin);
+  return { ...base, creneaux, source: "club", pointMeteo: jourClub.pointMeteo, start: jourClub.start, note: jourClub.note };
 }
