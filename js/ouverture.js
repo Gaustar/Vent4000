@@ -95,8 +95,8 @@ export function journeeContinue(date) {
  * Statut d'ouverture d'une date.
  * @returns {null | {type:"weekend"|"ferie"|"vendredi", creneaux:[{id,label,debut,fin}]}}
  *   Les heures `debut`/`fin` sont décimales locales ; `fin: null` = coucher du soleil.
- *   `debut` est l'heure du PREMIER SAUT (9h00), pas l'ouverture du club
- *   (8h30) : scorer 8h-9h proposait une fenêtre sans séance de saut.
+ *   `debut` est l'heure du premier saut possible : l'ouverture du club
+ *   (8h30) ; l'app la repousse au lever du soleil s'il est plus tardif.
  */
 export function statutOuverture(date) {
   if (!dansSaison(date)) return null;
@@ -147,8 +147,7 @@ export function fermeParLeClub(date, club) {
  *  - jour listé par le club : ouvert, même hors calendrier habituel
  *    (ouverture exceptionnelle → une journée continue) ; si le « start
  *    prévu » est plus tardif que le premier créneau, les créneaux
- *    commencent à cette heure. Un start plus matinal ne change rien :
- *    l'app garde 9h00 (premier saut) tant que le RT n'a pas précisé.
+ *    commencent à cette heure.
  *  - jour habituel absent d'un planning qui le couvre : fermé (null).
  */
 export function ouvertureReelle(date, club = null) {

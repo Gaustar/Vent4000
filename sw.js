@@ -4,7 +4,7 @@
 // avec repli sur la dernière prévision en cache (mode hors-ligne).
 // ============================================================
 
-const CACHE = "vent4000-v28";
+const CACHE = "vent4000-v29";
 const SHELL = [
   "./",
   "./index.html",

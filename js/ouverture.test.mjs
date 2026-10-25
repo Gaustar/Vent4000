@@ -38,10 +38,9 @@ test("Un samedi en pleine saison : 2 créneaux, premier saut à 9h, split 14h, f
   const o = statutOuverture(d);
   assert.equal(o.type, "weekend");
   assert.equal(o.creneaux.length, 2);
-  // 9h et non 8h30 : le club ouvre à 8h30 (inscription) mais « les séances
-  // de saut au PCN débutent à 9h00 » (FAQ paraclubnamur.be). Scorer 8h-9h
-  // proposait une fenêtre pendant laquelle personne ne saute.
-  assert.equal(o.creneaux[0].debut, 9);
+  // Sauts dès l'ouverture (8h30), du lever au coucher du soleil (précisé
+  // par un membre le 2026-10-25) ; le lever du soleil est appliqué par l'app.
+  assert.equal(o.creneaux[0].debut, 8.5);
   assert.equal(o.creneaux[0].fin, 14);
   assert.equal(o.creneaux[1].fin, null); // coucher du soleil
 });
@@ -57,7 +56,7 @@ test("Après le changement d'heure de fin octobre : journée continue, un seul c
   assert.equal(statutOuverture(avant).creneaux.length, 2, "pleine saison = 2 créneaux");
   const o = statutOuverture(apres);
   assert.equal(o.creneaux.length, 1, "fin de saison = journée continue");
-  assert.equal(o.creneaux[0].debut, 9);
+  assert.equal(o.creneaux[0].debut, 8.5);
   assert.equal(o.creneaux[0].fin, null);
 });
 
@@ -131,11 +130,11 @@ test("ouvertureReelle : planning du club prioritaire sur le calendrier habituel"
       { date: "2026-11-08", jour: "Dimanche", pointMeteo: null, start: "11h", note: null },
     ],
   };
-  // Jour habituel confirmé : créneaux habituels (start 8h30 < premier saut 9h → inchangé).
+  // Jour habituel confirmé : créneaux habituels, dès 8h30.
   const sam = ouvertureReelle(new Date(2026, 9, 31), club);
   assert.equal(sam.source, "club");
   assert.equal(sam.pointMeteo, "7h30");
-  assert.equal(sam.creneaux[0].debut, 9);
+  assert.equal(sam.creneaux[0].debut, 8.5);
   // Ouverture exceptionnelle un mercredi : une journée dès le start annoncé.
   const mer = ouvertureReelle(new Date(2026, 10, 4), club);
   assert.equal(mer.type, "club");

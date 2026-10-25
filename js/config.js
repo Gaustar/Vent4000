@@ -135,7 +135,10 @@ export const AERODROME = {
 //    8h30 à 14h00, puis de 14h00 jusqu'au coucher du soleil. […] À partir
 //    de fin octobre (avec le changement d'heure), les journées sont
 //    continues. »
-//  - « les séances de saut au PCN débutent à 9h00 ».
+//  - Sauts : du lever au coucher du soleil, dès l'ouverture du club à 8h30
+//    (précisé par un membre le 2026-10-25 ; l'ancien site disait « les
+//    séances de saut débutent à 9h00 », la page météo du club affiche
+//    « start prévu 8h30 »). Le lever du soleil est appliqué dans app.js.
 // ============================================================
 export const OUVERTURE = {
   saisonDebut: { mois: 3, jour: 1 },
@@ -143,7 +146,7 @@ export const OUVERTURE = {
   vendrediDebutMois: 5,
   vendrediFinMois: 9,
   heureOuverture: 8.5,
-  heurePremierSaut: 9,
+  heurePremierSaut: 8.5,   // jamais avant le lever du soleil (app.js)
   heureSplit: 14,
   heureVendredi: 16,
 };
@@ -200,4 +203,4 @@ export const RELAIS_CLUB = "https://vent4000-club.gaustar.workers.dev/club";
 // Avion de largage en direct (ADS-B adsb.lol / adsb.fi, filtré par js/avion.js).
 export const RELAIS_AVION = "https://vent4000-club.gaustar.workers.dev/avion";
 
-export const VERSION = "2.6.0";
+export const VERSION = "2.6.1";

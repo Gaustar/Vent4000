@@ -168,9 +168,17 @@ function rotationFleche(direction) {
   return (direction ?? 0) + 90;
 }
 
+/** 8.5 → « 8h30 », 17.48 → « 17h29 », 9 → « 9h ». */
+function heureMinutes(x) {
+  let h = Math.floor(x);
+  let m = Math.round((x - h) * 60);
+  if (m === 60) { h += 1; m = 0; }
+  return m ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
+}
+
 function texteFenetre(f) {
   if (!f || f.debut == null) return null;
-  return `${f.debut}h → ${f.fin}h`;
+  return `${heureMinutes(f.debutAffiche ?? f.debut)} → ${heureMinutes(f.finAffiche ?? f.fin)}`;
 }
 
 function formatDistance(m) {
@@ -232,18 +240,21 @@ function calculerJoursOuverts(seuils) {
 
     const estAujourdhui = jour.date === aujourdhui;
     const coucher = heureDecimale(jour.sunset);
+    // Sauts du lever au coucher du soleil, jamais avant l'ouverture du club.
+    const lever = jour.sunrise ? heureDecimale(jour.sunrise) : null;
 
-    let creneaux = ouverture.creneaux.map((c) => {
+    let creneaux = ouverture.creneaux.map((c0) => {
+      const c = lever != null && lever > c0.debut ? { ...c0, debut: lever } : c0;
       const fin = c.fin ?? coucher;
       const heures = jour.heures
         .filter((h) => h.heure + 1 > c.debut && h.heure < fin)
         .filter((h) => !estAujourdhui || h.heure >= heureNow)
         .map((h) => ({ h, score: scoreHeure(h, seuils, aero) }));
-      return {
-        ...c,
-        heures,
-        fenetre: fenetreSautable(heures.map((x) => ({ heure: x.h.heure, verdict: x.score.verdict }))),
-      };
+      const f = fenetreSautable(heures.map((x) => ({ heure: x.h.heure, verdict: x.score.verdict })));
+      // Le calcul se fait par heure pleine ; l'affichage donne les vraies
+      // bornes (ouverture ou lever du soleil, coucher du soleil).
+      const fenetre = f.debut != null ? { ...f, debutAffiche: Math.max(f.debut, c.debut), finAffiche: Math.min(f.fin, fin) } : f;
+      return { ...c, heures, fenetre };
     });
     creneaux = creneaux.map((c) => ({ ...c, verdict: c.fenetre.verdict }));
 
@@ -911,8 +922,8 @@ function rendrePourquoi(el, info) {
 }
 
 /** Heure par heure, en clair : verdict, vent, et ce qui coince. */
-function rendreHeures(el, toutes) {
-  el.innerHTML = toutes.map(({ h, score }) => {
+function rendreHeures(el, toutes, premierSaut) {
+  el.innerHTML = toutes.map(({ h, score }, i) => {
     const ss = sourcesAffichees(score);
     const vent = plage(ss.map((s) => s.conditions.vent), vv);
     const raf = plage(ss.map((s) => s.conditions.rafales ?? (s.conditions.rafalesAbsentesSignifientCalme ? s.conditions.vent : null)), vv);
@@ -921,7 +932,7 @@ function rendreHeures(el, toutes) {
     const actif = h.heure === etat.heureSelectionnee;
     const raisons = actif ? enCause.map(regleEnClair) : enCause.slice(0, 1).map(regleEnClair);
     return `<button type="button" class="heure ${score.verdict}" data-heure="${h.heure}" aria-pressed="${actif}">
-      <span class="heure-h">${h.heure}h</span>
+      <span class="heure-h">${i === 0 && premierSaut > h.heure ? heureMinutes(premierSaut) : `${h.heure}h`}</span>
       <span class="heure-s" aria-label="${VERDICT_TEXTE[score.verdict]}">${VERDICT_SYMBOLE[score.verdict]}</span>
       <span class="heure-txt">${vent ? `vent <b>${vent}</b>` : "vent —"}${raf && raf !== vent ? `, rafales <b>${raf}</b>` : ""} ${uniteVent()}
         ${raisons.map((t) => `<span class="heure-raison">${echapper(t)}</span>`).join("")}
@@ -948,8 +959,8 @@ function rendreJour() {
   const o = info.ouverture;
   const texteOuverture = o.source === "club"
     ? `Ouverture confirmée par le club${o.start ? `, début prévu à ${o.start}` : ""}${o.pointMeteo ? ` · point météo à ${o.pointMeteo}` : ""}`
-    : o.type === "vendredi" ? "Le club ouvre à 16h" : "Le club ouvre à 8h30, premiers sauts vers 9h";
-  $("#jour-soustitre").textContent = `${texteOuverture} · coucher du soleil ${heureDe(jour.sunset)} · ${echeanceEnClair(info.index)}`;
+    : o.type === "vendredi" ? "Le club ouvre à 16h" : "Le club ouvre à 8h30";
+  $("#jour-soustitre").textContent = `${texteOuverture} · sauts du lever au coucher du soleil (${jour.sunrise ? heureMinutes(heureDecimale(jour.sunrise)) : "—"} – ${heureMinutes(heureDecimale(jour.sunset))}) · ${echeanceEnClair(info.index)}`;
 
   $("#jour-verdict").className = `hero ${info.verdictJour}`;
   $("#jour-verdict-texte").innerHTML =
@@ -997,7 +1008,7 @@ function rendreJour() {
     etat.heureSelectionnee = debut != null ? debut : toutes[0].h.heure;
   }
 
-  rendreHeures($("#jour-heures"), toutes);
+  rendreHeures($("#jour-heures"), toutes, Math.min(...info.creneaux.map((c) => c.debut)));
   $("#jour-technique").open = etat.reglages.expert || $("#jour-technique").open;
   rendreMatrice(toutes, estAujourdhui);
   const sel = toutes.find((x) => x.h.heure === etat.heureSelectionnee) ?? toutes[0];

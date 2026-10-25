@@ -4,6 +4,17 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [2.6.1] — 2026-10-25
+
+### Modifié
+- **Heures de saut : du lever au coucher du soleil, dès l'ouverture du club
+  à 8h30** (précisé par un membre). L'app comptait à partir de 9h00
+  (ancien site : « les séances débutent à 9h00 ») ; l'heure 8h30-9h entre
+  désormais dans le calcul, et le lever du soleil repousse le début s'il
+  est plus tardif (fin de saison). Question RT n° 5 close.
+- Les fenêtres affichent leurs **vraies bornes** (« 8h30 → 17h29 ») au
+  lieu d'heures rondes (« 8h → 18h ») ; le calcul reste par heure.
+
 ## [2.6.0] — 2026-10-25
 
 Prête à être montrée au club : l'app parle à tout le monde (passager

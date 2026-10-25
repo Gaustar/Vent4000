@@ -110,11 +110,12 @@ Historique détaillé version par version dans [CHANGELOG.md](./CHANGELOG.md).
 Vérifié sur paraclubnamur.be (voir §3 du cadre réglementaire) :
 
 - Week-ends et jours fériés belges (computus de Pâques inclus), du 1er mars
-  au 15 décembre. Club ouvert dès 8h30, mais **le scoring démarre à 9h00** :
-  8h30 est l'inscription, « les séances de saut débutent à 9h00 ».
-- **Pleine saison** : deux créneaux, 9h → 14h puis 14h → coucher du soleil.
+  au 15 décembre. **Sauts du lever au coucher du soleil, dès l'ouverture du
+  club à 8h30** (précisé par un membre le 2026-10-25) : les heures comptent
+  à partir de 8h30, ou du lever du soleil s'il est plus tardif.
+- **Pleine saison** : deux créneaux, 8h30 → 14h puis 14h → coucher du soleil.
 - **À partir du dernier dimanche d'octobre** (changement d'heure) : un seul
-  créneau continu, 9h → coucher du soleil.
+  créneau continu, 8h30 (ou lever du soleil) → coucher du soleil.
 - Vendredis de mai à septembre : créneau unique dès 16h.
 
 **Planning réel du club (v2.4).** Quand le relais répond, les jours listés
@@ -123,7 +124,7 @@ par le club sur sa page météo publique priment sur ce calendrier habituel
 
 - jour listé : ouvert, même hors calendrier habituel (« ouverture
   exceptionnelle », une journée continue) ; un « start prévu » plus
-  tardif que 9h00 décale le début des créneaux ;
+  tardif que 8h30 décale le début des créneaux ;
 - jour habituel **absent** d'un planning qui le couvre (du lendemain de
   la lecture au dernier jour listé) : fermé, et signalé sous la liste ;
 - le jour même n'est jamais déclaré fermé par absence (à vérifier un jour
@@ -303,9 +304,10 @@ Vérifié sur paraclubnamur.be le 2026-09-23 :
 - **Saison et vendredis confirmés** — « ouvert les week-ends et jours
   fériés dès 8h30 […] de Mars à mi-décembre […] les vendredis dès 16h00
   **de mai à septembre** ».
-- **Premier saut à 9h00, pas 8h30** — « les séances de saut au PCN
-  **débutent à 9h00** et se terminent au coucher du soleil ». 8h30 est
-  l'ouverture/inscription.
+- **Sauts du lever au coucher du soleil, dès 8h30** — l'ancien site
+  disait « les séances de saut au PCN débutent à 9h00 » ; un membre a
+  précisé le 2026-10-25 que les sauts se font du lever au coucher du
+  soleil, le club ouvrant à 8h30.
 - **Journées continues en fin de saison** — « En pleine saison, les
   journées sont divisées en deux créneaux : de 8h30 à 14h00, puis de 14h00
   jusqu'au coucher du soleil. […] **À partir de fin octobre (avec le
@@ -399,10 +401,10 @@ répond aux questions 1 à 4. Les réponses ne peuvent venir que du RT.
    L'app ne retient qu'une couche ≥ 5/8 (définition OACI du plafond,
    Annexe 2 : couche couvrant plus de la moitié du ciel). Des nuages épars
    sous 3000 ft ne bloquent donc pas le verdict.
-5. 🟠 **Premier saut à 8h30 ou 9h00 ?** L'ancien site disait « les séances
-   de saut débutent à 9h00 » ; la nouvelle page météo affiche « start
-   prévu 8h30 ». L'app garde 9h00 tant que le sens de « start » n'est pas
-   confirmé (ouverture ou premier décollage).
+5. ✅ **Premier saut à 8h30 ou 9h00 ?** Tranché par un membre le
+   2026-10-25 : le club ouvre à 8h30 et les sauts se font du lever au
+   coucher du soleil. L'app compte donc dès 8h30 (lever du soleil s'il est
+   plus tardif).
 6. ✅ **Brevet B** : tranché par le BVR VVP (« Tot en met B-brevet : 14
    knopen / Vanaf C-brevet : 25 knopen »), relu le 2026-10-13.
 
