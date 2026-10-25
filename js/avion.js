@@ -20,7 +20,7 @@ import { DZ } from "./config.js";
  * Avion(s) du club. Immatriculation relevée sur jetphotos.com (Cessna 208
  * Caravan photographié à Namur-Suarlée de 2022 à 2025) ; capacité
  * cohérente avec le site du club (« 14 parachutistes et maximum 4
- * tandems »). À reconfirmer sur un jour d'opération.
+ * tandems »). Confirmée par un membre du club le 2026-10-25.
  */
 export const AVIONS_CLUB = ["F-GHGZ"];
 
