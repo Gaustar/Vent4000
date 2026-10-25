@@ -188,7 +188,10 @@ export const LIENS = {
   irm: "https://www.meteo.be/fr/namur",
   windy: `https://www.windy.com/${DZ.lat}/${DZ.lon}?wind,${DZ.lat},${DZ.lon},11`,
   club: "https://paraclubnamur.be",
+  // Page météo de l'espace membre (refaite en octobre 2026) : état des
+  // activités, heure du point météo, limite de sauts, METAR/TAF EBCI.
+  // Pas de CORS ni d'API : l'app ne peut que renvoyer vers elle.
   briefing: "https://pro.paraclubnamur.be/fr/meteo",
 };
 
-export const VERSION = "2.3.0";
+export const VERSION = "2.3.1";

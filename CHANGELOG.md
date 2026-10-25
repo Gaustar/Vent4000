@@ -4,6 +4,28 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [2.3.1] — 2026-10-25
+
+Le Paraclub a refait sa page météo (publique et espace membre). Relue en
+entier ; calcul du verdict, seuils et sources inchangés.
+
+### Modifié
+- **Lien « Page météo du club »** (ex-« Briefing officiel du club ») : la
+  page membres affiche désormais l'état des activités, l'heure du point
+  météo, la **limite de sauts** du jour et les vrais jours d'ouverture.
+  L'avertissement des journées orange renvoie vers cette limite.
+- **Calendrier annoncé comme habituel** : l'app ne connaît pas les
+  fermetures exceptionnelles (le club était fermé le 24-25 octobre, jours
+  que l'app comptait ouverts). Une note sous la liste le dit.
+- README : banderole de 7h10 remplacée par la page météo ; question RT
+  ajoutée sur le « start prévu 8h30 » (l'app garde 9h00).
+
+### Vérifié
+- Le club affiche lui aussi le METAR et le TAF de Charleroi (EBCI) : le
+  décodage de l'app concorde avec le sien sur les messages du jour.
+- Pas d'API ni de CORS sur le site du club : aucune lecture automatique
+  possible depuis l'app.
+
 ## [2.3.0] — 2026-10-13
 
 Recherche dans les textes d'origine sur les questions restées ouvertes

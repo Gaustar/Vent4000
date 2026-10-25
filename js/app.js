@@ -385,8 +385,8 @@ function rendreSemaine() {
     conteneur.innerHTML = `
       <div class="vide">
         <strong>Aucun jour d'ouverture</strong> dans les 7 prochains jours.
-        Le club ouvre les week-ends et jours fériés de mars à mi-décembre,
-        plus les vendredis dès 16h de mai à septembre.
+        Le club ouvre habituellement les week-ends et jours fériés de mars à
+        mi-décembre, plus les vendredis dès 16h de mai à septembre.
       </div>`;
   }
 
@@ -493,7 +493,7 @@ function afficherAvertissementExperience(el, verdict) {
   if (concerne) {
     el.innerHTML = `Journée limite : le club peut imposer un <strong>nombre de sauts minimum</strong>
       pour débuter, et le RT peut durcir les limites (RSB §3.4.2).
-      <a href="${LIENS.briefing}" target="_blank" rel="noopener">Vérifier le briefing du club</a>.`;
+      <a href="${LIENS.briefing}" target="_blank" rel="noopener">Voir la limite de sauts du club</a>.`;
   }
 }
 

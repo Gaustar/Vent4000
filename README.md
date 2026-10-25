@@ -22,8 +22,8 @@ estimée, aucune pondération arbitraire.
 > limites, et le Paraclub pose sur les journées limites une **barrière
 > d'expérience** (un nombre de sauts minimum) qui n'est pas prévisible
 > depuis la météo. L'app sert à savoir **sur quoi se baser avant** que le
-> club ne se prononce — et à savoir **quand décider** : le club publie sa
-> banderole le matin même, dès 7h10.
+> club ne se prononce — et à savoir **quand décider** : le club publie
+> l'état des activités le matin même sur sa page météo, jamais la veille.
 
 ## Ce que fait l'app (v2.2)
 
@@ -264,9 +264,42 @@ Vérifié sur paraclubnamur.be le 2026-09-23 :
   changement d'heure), les journées sont continues.** »
 - **Ouverture élève à 1500 m** et **largage à 4000 m** confirmés par le
   club, ce qui valide `hauteurOuverture` et `altitudeLargage`.
-- Le club publie une **banderole météo** sur sa page d'accueil le matin
-  même (dès 7h10, 14h30 le vendredi), et un **briefing** dans l'espace
-  membre. C'est le go/no-go opérationnel réel — l'app ne le remplace pas.
+- Le club publie l'**état des activités** le matin même (« aucune décision
+  liée à la météo n'est prise la veille des sauts »). C'est le go/no-go
+  opérationnel réel — l'app ne le remplace pas. Voir ci-dessous la page
+  météo refaite en octobre 2026.
+
+#### Page météo du club (refaite en octobre 2026, relue le 2026-10-25)
+
+Deux versions : publique (`paraclubnamur.be/fr/meteo`, remplace la
+banderole de la page d'accueil, que la FAQ cite encore) et membres
+(`pro.paraclubnamur.be/fr/meteo`, connexion requise — c'est elle que
+l'app ouvre). On y trouve :
+
+- **État des activités** (relevé : « Fermé » ; les autres états ne sont
+  visibles qu'un jour d'opération) et date de dernière mise à jour ;
+- **Prochains jours d'ouverture**, avec l'heure du **point météo** et le
+  **start prévu** (8h30 sur tous les jours affichés) ;
+- **Limite de sauts** (membres) : la barrière d'expérience décrite
+  ci-dessous est désormais publiée, avec cette réserve du club : la limite
+  affichée est « celle qui était valable au moment de la dernière mise à
+  jour » ;
+- **METAR et TAF de Charleroi (EBCI)** (membres), avec un décodage « à
+  titre indicatif ». Ce sont les deux sources d'observation de l'app ; le
+  décodage de l'app a été comparé à celui du club sur les messages du
+  2026-10-25 (vent, rafales, nuages, groupe TEMPO, heures locales) :
+  identique.
+
+Ce que l'app ne peut pas en tirer automatiquement : les pages sont
+rendues côté serveur, sans API ni en-tête CORS, et la version membres
+demande une connexion. L'app renvoie donc vers la page membres et
+précise que son calendrier est le calendrier **habituel**.
+
+**Le calendrier réel a des exceptions** que l'app ignore : club fermé le
+week-end du 24-25 octobre 2026 (absent des « prochains jours
+d'ouverture ») ; l'Agenda public du site membres annonce aussi des
+fermetures (4-6 septembre 2026) et des ouvertures en semaine (24-28 août,
+1-2 septembre 2026).
 
 #### ⚠ Le club ne raisonne pas en seuils, mais en expérience
 
@@ -284,8 +317,9 @@ C'est la limite structurelle de cet outil :
   « ça passe peut-être, pour certains ».
 
 L'app affiche cet avertissement sur tous les verdicts orange, avec un lien
-vers le briefing. **Aucune évolution ne pourra lever cette limite** — seul
-le briefing du club fait foi.
+vers la page météo du club, où la **limite de sauts** du jour est publiée
+depuis octobre 2026. Elle reste imprévisible à l'avance : seule la page du
+club fait foi.
 
 **La décision de sauter appartient toujours au Paraclub et aux moniteurs.**
 
@@ -314,7 +348,11 @@ répond aux questions 1 à 4. Les réponses ne peuvent venir que du RT.
    L'app ne retient qu'une couche ≥ 5/8 (définition OACI du plafond,
    Annexe 2 : couche couvrant plus de la moitié du ciel). Des nuages épars
    sous 3000 ft ne bloquent donc pas le verdict.
-5. ✅ **Brevet B** : tranché par le BVR VVP (« Tot en met B-brevet : 14
+5. 🟠 **Premier saut à 8h30 ou 9h00 ?** L'ancien site disait « les séances
+   de saut débutent à 9h00 » ; la nouvelle page météo affiche « start
+   prévu 8h30 ». L'app garde 9h00 tant que le sens de « start » n'est pas
+   confirmé (ouverture ou premier décollage).
+6. ✅ **Brevet B** : tranché par le BVR VVP (« Tot en met B-brevet : 14
    knopen / Vanaf C-brevet : 25 knopen »), relu le 2026-10-13.
 
 ### Limites des sources de données
