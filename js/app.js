@@ -6,7 +6,7 @@ import { DZ, NIVEAUX_PRATIQUE, LIENS, RELAIS_CLUB, RELAIS_AVION, VERSION, LEGAL_
 import { ouvertureReelle, fermeParLeClub, estFerie } from "./ouverture.js";
 import { normaliserProfil, ventMaxEffectif, jourDisponible, convertirVent, exporterProfil, importerProfil,
   UNITES_VENT, THEMES, JOURS_SEMAINE, MARGE_MAX } from "./profil.js";
-import { phaseVol, distanceKm, relevement, RAYON_KM, SIGNAL_PERIME_S } from "./avion.js";
+import { phaseVol, distanceKm, relevement, vueDepuis, RAYON_KM, SIGNAL_PERIME_S } from "./avion.js";
 import { chargerClub } from "./club.js";
 import { scoreHeure, fenetreSautable, meilleurVerdict, ventPiste } from "./scoring.js";
 import { ageMetar } from "./metar.js";
@@ -34,6 +34,8 @@ const etat = {
   club: null,               // page météo publique du club, via le relais (club.js)
   avion: null,              // avion(s) de largage près du terrain, via le relais (avion.js)
   traces: new Map(),        // hex → positions reçues depuis l'ouverture de l'app
+  moi: null,                // position du téléphone (« Me situer ») : jamais envoyée
+  moiErreur: null,
 };
 
 /** Profil du membre (js/profil.js) : migré et validé à la lecture. */
@@ -500,6 +502,34 @@ async function chargerAvion() {
   if (!$("#vue-semaine").hidden) rendreAvion($("#mt-avion"));
 }
 
+// « Me situer » : position du téléphone, utilisée sur place pour dire où
+// regarder. Elle n'est ni enregistrée ni envoyée ; le suivi s'arrête dès
+// que l'accueil n'est plus à l'écran.
+let suiviPosition = null;
+
+function majSuiviPosition() {
+  const voulu = etat.reglages.maPosition && !document.hidden && !$("#vue-semaine").hidden && "geolocation" in navigator;
+  if (voulu && suiviPosition == null) {
+    suiviPosition = navigator.geolocation.watchPosition((p) => {
+      etat.moi = { lat: p.coords.latitude, lon: p.coords.longitude, altM: p.coords.altitude, precisionM: p.coords.accuracy };
+      etat.moiErreur = null;
+      if (!$("#vue-semaine").hidden) rendreAvion($("#mt-avion"));
+    }, (e) => {
+      etat.moiErreur = e.code === 1 ? "localisation refusée dans le navigateur" : "position indisponible";
+      if (e.code === 1) majProfil({ maPosition: false }, { rerendre: false });
+      arreterSuiviPosition();
+      if (!$("#vue-semaine").hidden) rendreAvion($("#mt-avion"));
+    }, { enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 });
+  } else if (!voulu) {
+    arreterSuiviPosition();
+  }
+}
+
+function arreterSuiviPosition() {
+  if (suiviPosition != null) navigator.geolocation.clearWatch(suiviPosition);
+  suiviPosition = null;
+}
+
 /** Jour d'ouverture, de 7h au coucher du soleil (+45 min) : l'avion peut voler. */
 function periodeDeVol() {
   const date = dateLocale(todayIso());
@@ -512,6 +542,7 @@ function periodeDeVol() {
 /** Interroge souvent quand l'avion peut voler et que l'accueil est à l'écran, rarement sinon. */
 function planifierAvion() {
   clearTimeout(minuteurAvion);
+  majSuiviPosition();
   if (document.hidden || $("#vue-semaine").hidden) return;
   // Avion en vue : 10 s (= la copie du relais ; le MLAT donne une position toutes les ~5 s).
   const enVue = (etat.avion?.avions?.length ?? 0) > 0;
@@ -555,6 +586,7 @@ function rendreAvion(el) {
     <div class="mt-corps">
       <p class="mt-valeur">${valeur}</p>
       ${detail}
+      ${texteDepuisMoi(a)}
       <details class="radar-cadre"${radarOuvert ? " open" : ""}>
         <summary>Radar</summary>
         ${svgRadar(d?.avions ?? [])}
@@ -562,9 +594,33 @@ function rendreAvion(el) {
           Positions par triangulation (MLAT) toutes les ~5 s ; direction calculée d'après la trace.
           Cercles tous les 5 km autour de la piste ${String(DZ.qfu).padStart(3, "0")}°/${DZ.qfu + 180}°.</p>
       </details>
+      <div class="actions"><button type="button" class="btn secondaire" data-action="me-situer" aria-pressed="${etat.reglages.maPosition}">${etat.reglages.maPosition ? "Ne plus me situer" : "Me situer"}</button></div>
     </div>
     <span class="mt-age">${d?.recu ? ilYa(new Date(d.recu).getTime()) : ""}</span>`;
   el.querySelector(".radar-cadre").addEventListener("toggle", (e) => { radarOuvert = e.target.open; });
+  el.querySelector('[data-action="me-situer"]').addEventListener("click", () => {
+    const actif = !etat.reglages.maPosition;
+    majProfil({ maPosition: actif }, { rerendre: false });
+    if (actif) { radarOuvert = true; etat.moiErreur = null; } else { etat.moi = null; }
+    majSuiviPosition();
+    rendreAvion(el);
+  });
+}
+
+/** « Depuis toi » : où lever les yeux, calculé sur le téléphone. */
+function texteDepuisMoi(a) {
+  if (!etat.reglages.maPosition && !etat.moiErreur) return "";
+  if (etat.moiErreur) return `<p class="mt-detail">Me situer : ${echapper(etat.moiErreur)}.</p>`;
+  const m = etat.moi;
+  if (!m) return `<p class="mt-detail mt-attente">Localisation en cours…</p>`;
+  const imprecis = m.precisionM > 300 ? ` <span class="mt-discret">(position à ±${Math.round(m.precisionM / 100) / 10} km)</span>` : "";
+  if (!a || a.auSol) {
+    const d = distanceKm(DZ.lat, DZ.lon, m.lat, m.lon);
+    return `<p class="mt-detail"><b>Toi</b> : à ${(Math.round(d * 10) / 10).toLocaleString("fr-BE")} km ${versCardinal(relevement(DZ.lat, DZ.lon, m.lat, m.lon))} du terrain${imprecis}.</p>`;
+  }
+  const v = vueDepuis(m, a);
+  return `<p class="mt-detail"><b>Depuis toi</b> : regarde ${versCardinal(v.relevement)}${v.elevation != null ? `, <b>${v.elevation}°</b> au-dessus de l'horizon` : ""}
+    · ${v.distanceKm.toLocaleString("fr-BE")} km au sol${v.directeKm != null ? ` (${v.directeKm.toLocaleString("fr-BE")} km en ligne droite)` : ""}${imprecis}.</p>`;
 }
 
 /** Radar en SVG : terrain au centre, nord en haut, trace de l'avion, jauge d'altitude jusqu'au largage. */
@@ -594,6 +650,10 @@ function svgRadar(avions) {
       })()}
       <text x="${(x + 9).toFixed(1)}" y="${(y + 4).toFixed(1)}" class="r-etiq">${a.auSol ? "sol" : a.altitudeM != null ? `${(a.altitudeM / 1000).toLocaleString("fr-BE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km` : ""}</text>`;
   }).join("");
+  const m = etat.moi;
+  const moiSvg = m && distanceKm(DZ.lat, DZ.lon, m.lat, m.lon) <= RAYON_KM
+    ? (() => { const [x, y] = pos(m.lat, m.lon); return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5" class="r-moi"/><text x="${(x + 8).toFixed(1)}" y="${(y + 4).toFixed(1)}" class="r-etiq">toi</text>`; })()
+    : "";
   const principal = avions[0];
   const hJauge = 200;
   const yAlt = (m) => 20 + hJauge - (Math.min(m, 4500) / 4500) * hJauge;
@@ -605,6 +665,7 @@ function svgRadar(avions) {
       <line x1="${C - R}" y1="${C}" x2="${C + R}" y2="${C}" class="r-axe"/>
       <text x="${C}" y="${C - R - 2}" class="r-nord">N</text>
       <g transform="rotate(${DZ.qfu} ${C} ${C})"><rect x="${C - 2}" y="${C - 9}" width="4" height="18" rx="1" class="r-piste"/></g>
+      ${moiSvg}
       ${avionsSvg}
       <g class="r-jauge">
         <rect x="256" y="20" width="10" height="${hJauge}" rx="3" class="r-jauge-fond"/>

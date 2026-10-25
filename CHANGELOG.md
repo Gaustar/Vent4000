@@ -4,6 +4,21 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [2.5.2] — 2026-10-25
+
+### Ajouté
+- **« Me situer »** sur le radar de l'avion : le membre apparaît sur le
+  radar (dans un rayon de 20 km) et l'app indique **où lever les yeux** —
+  direction et angle au-dessus de l'horizon (« au NNE, 17° »), distance au
+  sol et en ligne droite (`vueDepuis`, `js/avion.js`). Angle approché :
+  l'altitude de l'avion est barométrique.
+- Vie privée : la position sert uniquement sur le téléphone, n'est ni
+  enregistrée ni envoyée, et le suivi s'arrête dès qu'on quitte l'accueil.
+  Seul le choix « me situer » est mémorisé (profil, `maPosition`).
+
+### Tests
+101 tests.
+
 ## [2.5.1] — 2026-10-25
 
 Vérification de la source de l'avion, sur les archives adsb.lol de F-GHGZ

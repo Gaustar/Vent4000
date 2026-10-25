@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lireAvions, phaseVol, distanceKm, relevement } from "./avion.js";
+import { lireAvions, phaseVol, distanceKm, relevement, vueDepuis } from "./avion.js";
 
 // Format « readsb » d'adsb.lol (champs relevés le 2026-10-25) ; positions synthétiques autour d'EBNM.
 const REPONSE = { ac: [
@@ -51,4 +51,15 @@ test("lireAvions : position MLAT réelle (sans cap ni vitesse) à 17 km, comme F
   assert.equal(a[0].vitesseKmh, null);
   assert.equal(phaseVol(a[0]), "en montée");
   assert.ok(a[0].distanceKm > 16 && a[0].distanceKm < 18);
+});
+
+test("vueDepuis : direction et angle pour lever les yeux", () => {
+  // Observateur sur le terrain, avion 3 km plus haut et 3 km plus au nord : 45° au nord.
+  const v = vueDepuis({ lat: 50.4897, lon: 4.7697, altM: 181 }, { lat: 50.4897 + 3 / 111.2, lon: 4.7697, altitudeM: 3181 });
+  assert.ok(Math.abs(v.distanceKm - 3) < 0.1);
+  assert.ok(v.relevement === 0 || v.relevement === 360);
+  assert.equal(v.elevation, 45);
+  assert.ok(Math.abs(v.directeKm - 4.2) < 0.1);
+  // Altitude du téléphone inconnue : sol du terrain ; altitude de l'avion inconnue : pas d'angle.
+  assert.equal(vueDepuis({ lat: 50.4897, lon: 4.7697 }, { lat: 50.5, lon: 4.77, altitudeM: null }).elevation, null);
 });

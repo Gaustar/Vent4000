@@ -41,6 +41,7 @@ export function profilParDefaut() {
     jours: { 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, feries: true },
     theme: "auto",
     unite: "kmh",
+    maPosition: false,   // « Me situer » sur le radar : la position reste sur le téléphone
     trajet: null,
   };
 }
@@ -92,6 +93,7 @@ export function normaliserProfil(brut) {
   }
   if (THEMES[brut.theme]) p.theme = brut.theme;
   if (UNITES_VENT[brut.unite]) p.unite = brut.unite;
+  p.maPosition = brut.maPosition === true;
   p.trajet = nettoyerTrajet(brut.trajet);
   return p;
 }

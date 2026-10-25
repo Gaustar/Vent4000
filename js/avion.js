@@ -117,3 +117,25 @@ export function phaseVol(avion) {
   if (avion.vario < -300) return "en descente";
   return "en palier";
 }
+
+/**
+ * L'avion vu depuis l'observateur (calcul sur le téléphone, rien n'est
+ * envoyé) : distance au sol, direction, angle au-dessus de l'horizon.
+ * L'altitude de l'avion est barométrique (référence 1013 hPa) : l'angle
+ * est donc approché (quelques degrés), d'où l'arrondi au degré.
+ * @param {{lat:number, lon:number, altM?:number|null}} obs
+ * @param {{lat:number, lon:number, altitudeM:number|null, auSol?:boolean}} avion
+ * @param {number} altSolM  altitude du sol si le téléphone ne la donne pas
+ */
+export function vueDepuis(obs, avion, altSolM = DZ.altitudeTerrain) {
+  const sol = distanceKm(obs.lat, obs.lon, avion.lat, avion.lon);
+  const direction = relevement(obs.lat, obs.lon, avion.lat, avion.lon);
+  const hauteur = avion.altitudeM != null ? avion.altitudeM - (obs.altM ?? altSolM) : null;
+  const elevation = hauteur != null ? (Math.atan2(hauteur, sol * 1000) * 180) / Math.PI : null;
+  return {
+    distanceKm: Math.round(sol * 10) / 10,
+    directeKm: hauteur != null ? Math.round(Math.hypot(sol, hauteur / 1000) * 10) / 10 : null,
+    relevement: Math.round(direction),
+    elevation: elevation != null ? Math.round(elevation) : null,
+  };
+}

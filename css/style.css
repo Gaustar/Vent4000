@@ -621,6 +621,7 @@ button { font: inherit; color: inherit; }
 .r-jauge-fond { fill: var(--surface-3); }
 .r-jauge-niveau { fill: var(--accent); }
 .r-largage { stroke: var(--encre-2); stroke-dasharray: 3 2; }
+.r-moi { fill: var(--surface); stroke: var(--accent); stroke-width: 3; }
 
 /* Vue Jour : pourquoi */
 .pourquoi { list-style: none; margin: var(--sp-3) 0 0; padding: 0; display: grid; gap: 4px; }
