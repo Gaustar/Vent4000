@@ -4,6 +4,35 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [2.5.1] — 2026-10-25
+
+Vérification de la source de l'avion, sur les archives adsb.lol de F-GHGZ
+(Mode S 391CD9) du 26/09 au 11/10/2026.
+
+### Constat
+- F-GHGZ **n'émet pas sa position** (pas d'ADS-B « out ») : 100 % des
+  positions viennent de la **multilatération (MLAT)**. Elle fonctionne
+  bien en vol : une position toutes les ~5 s, de 600 à 15 200 ft, jusqu'à
+  15 km du terrain, 13 à 18 montées par jour, toutes vues.
+- **Invisible près du sol** : perdu sous 200-700 m, retrouvé après le
+  décollage vers 550-1 300 m. Au sol entre deux montées : aucun signal.
+- Le MLAT ne fournit **jamais de cap** et parfois pas de vitesse.
+- adsb.lol et adsb.fi renvoient bien les cibles MLAT en temps réel
+  (signal de 1 à 3 s). Délai jusqu'à l'écran : ~5 à 25 s.
+
+### Corrigé
+- Le radar dessinait l'avion toujours pointé vers le nord (cap absent) :
+  la direction est maintenant **calculée d'après la trace** ; sans trace,
+  un point sans direction.
+
+### Ajouté
+- **Dernier signal** : quand l'avion disparaît, l'app affiche quand, à
+  quelle altitude, en montée ou en descente et où il a été vu pour la
+  dernière fois (conservé 2 h sur le téléphone).
+- Explication affichée : pas de signal entre deux montées, c'est normal.
+- Zone élargie à 20 km (15 km au plus relevés) ; interrogation toutes les
+  10 s quand l'avion est en vue.
+
 ## [2.5.0] — 2026-10-25
 
 Mise à niveau du design (conception : `docs/DESIGN.md`) et app

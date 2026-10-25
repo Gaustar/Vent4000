@@ -41,3 +41,14 @@ test("géométrie : distance et relèvement", () => {
   assert.equal(phaseVol({ vario: 50 }), "en palier");
   assert.equal(phaseVol({ vario: null }), null);
 });
+
+test("lireAvions : position MLAT réelle (sans cap ni vitesse) à 17 km, comme F-GHGZ", () => {
+  // Champs relevés sur adsb.lol le 2026-10-25 pour une cible MLAT (gs et track absents).
+  const a = lireAvions({ ac: [{ hex: "391cd9", type: "mlat", r: "F-GHGZ", t: "C208", alt_baro: 12400, baro_rate: 960, lat: 50.64, lon: 4.77, seen_pos: 2.1, mlat: ["baro_rate", "lat", "lon"] }] });
+  assert.equal(a.length, 1);
+  assert.equal(a[0].club, true);
+  assert.equal(a[0].cap, null);
+  assert.equal(a[0].vitesseKmh, null);
+  assert.equal(phaseVol(a[0]), "en montée");
+  assert.ok(a[0].distanceKm > 16 && a[0].distanceKm < 18);
+});

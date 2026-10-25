@@ -149,6 +149,12 @@ function jourHeureBruxelles(date) {
 }
 
 const CARDINAUX = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSO","SO","OSO","O","ONO","NO","NNO"];
+/** « au NE », « à l'OSO » : élision devant E et O. */
+function versCardinal(deg) {
+  const c = cardinal(deg);
+  return /^[EO]/.test(c) ? `à l'${c}` : `au ${c}`;
+}
+
 function cardinal(deg) {
   if (deg == null) return "—";
   return CARDINAUX[Math.round(deg / 22.5) % 16];
@@ -434,8 +440,31 @@ function rendreObsCompacte(el) {
 // Avion de largage en direct (ADS-B via le relais, js/avion.js)
 // ------------------------------------------------------------
 const TRACE_MAX_MS = 20 * 60000;
+const CLE_DERNIER_VU = "vent4000.avion";
+const DERNIER_VU_MAX_MS = 2 * 3600e3;
 let minuteurAvion = null;
 let radarOuvert = false;
+
+/** Dernière position reçue de l'avion du club : affichée quand il disparaît (au sol, sous la couverture). */
+function lireDernierVu() {
+  try {
+    const d = JSON.parse(localStorage.getItem(CLE_DERNIER_VU) || "null");
+    return d && Date.now() - d.quand < DERNIER_VU_MAX_MS ? d : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Cap (°) d'après les deux dernières positions de la trace : le MLAT n'en fournit pas. */
+function capDeTrace(hex) {
+  const t = etat.traces.get(hex) ?? [];
+  for (let i = t.length - 2; i >= 0; i--) {
+    const a = t[i];
+    const b = t.at(-1);
+    if (distanceKm(a.lat, a.lon, b.lat, b.lon) > 0.05) return relevement(a.lat, a.lon, b.lat, b.lon);
+  }
+  return null;
+}
 
 function majTraces(avions, quand) {
   for (const a of avions) {
@@ -459,6 +488,10 @@ async function chargerAvion() {
     if (!Array.isArray(d?.avions)) throw new Error("réponse inattendue");
     etat.avion = { ...d, erreur: null };
     majTraces(d.avions, new Date(d.recu).getTime());
+    const club = d.avions.find((a) => a.club);
+    if (club) {
+      try { localStorage.setItem(CLE_DERNIER_VU, JSON.stringify({ quand: new Date(d.recu).getTime() - (club.ageS ?? 0) * 1000, avion: club })); } catch { /* stockage indisponible */ }
+    }
   } catch {
     etat.avion = { ...(etat.avion ?? {}), erreur: "relais injoignable" };
   } finally {
@@ -480,8 +513,10 @@ function periodeDeVol() {
 function planifierAvion() {
   clearTimeout(minuteurAvion);
   if (document.hidden || $("#vue-semaine").hidden) return;
-  const actif = periodeDeVol() || (etat.avion?.avions?.length ?? 0) > 0;
-  minuteurAvion = setTimeout(async () => { await chargerAvion(); planifierAvion(); }, actif ? 15000 : 120000);
+  // Avion en vue : 10 s (= la copie du relais ; le MLAT donne une position toutes les ~5 s).
+  const enVue = (etat.avion?.avions?.length ?? 0) > 0;
+  const delai = enVue ? 10000 : periodeDeVol() ? 15000 : 120000;
+  minuteurAvion = setTimeout(async () => { await chargerAvion(); planifierAvion(); }, delai);
 }
 
 function rendreAvion(el) {
@@ -493,17 +528,23 @@ function rendreAvion(el) {
     valeur = `<span class="mt-attente">Recherche du signal…</span>`;
     detail = "";
   } else if (!a) {
+    const vu = lireDernierVu();
     valeur = d.erreur ? "Suivi indisponible" : "Pas de signal près du terrain";
-    detail = d.erreur
+    detail = (d.erreur
       ? `<p class="mt-detail">Le relais ne répond pas (${echapper(d.erreur)}).</p>`
-      : `<p class="mt-detail mt-discret">Aucun avion de largage détecté dans un rayon de ${RAYON_KM} km. Pas de signal
-         ne veut pas dire « au sol » : l'avion peut ne pas émettre ou voler sous la couverture des récepteurs.</p>`;
+      : "")
+      + (vu ? `<p class="mt-detail">Dernier signal de ${echapper(vu.avion.immat)} <b>${ilYa(vu.quand)}</b>, à ${heureBruxelles(new Date(vu.quand))} :
+          ${vu.avion.altitudeM != null ? `${vu.avion.altitudeM.toLocaleString("fr-BE")} m` : "altitude inconnue"}${phaseVol(vu.avion) ? `, ${phaseVol(vu.avion)}` : ""},
+          ${vu.avion.distanceKm.toLocaleString("fr-BE")} km ${versCardinal(vu.avion.relevement)} du terrain.</p>` : "")
+      + (d.erreur ? "" : `<p class="mt-detail mt-discret">L'avion n'émet pas sa position : il est localisé par triangulation (MLAT),
+          qui le perd près du sol (sous 200 à 700 m) et ne le retrouve qu'après le décollage, vers 550 à 1 300 m.
+          Entre deux montées, pas de signal : c'est normal.</p>`);
   } else {
     const phase = phaseVol(a);
     const nom = a.club ? `${a.immat}` : `${a.type ?? "Avion"} ${a.immat ?? ""}`;
     valeur = `<span class="mono">${echapper(nom)}</span> · ${a.auSol ? "au sol" : `<b class="mono">${a.altitudeM != null ? a.altitudeM.toLocaleString("fr-BE") : "—"} m</b>`}${phase && !a.auSol ? ` · ${phase}` : ""}`;
     const age = a.ageS != null ? Math.round(a.ageS + (Date.now() - new Date(d.recu).getTime()) / 1000) : null;
-    detail = `<p class="mt-detail">${a.distanceKm.toLocaleString("fr-BE")} km au ${cardinal(a.relevement)} du terrain
+    detail = `<p class="mt-detail">${a.distanceKm.toLocaleString("fr-BE")} km ${versCardinal(a.relevement)} du terrain
         ${a.vitesseKmh != null ? `· ${vv(a.vitesseKmh)} ${uniteVent()}` : ""}
         ${a.altitudeFt != null && !a.auSol ? `· ${a.altitudeFt.toLocaleString("fr-BE")} ft` : ""}
         ${age != null ? `· signal ${age > SIGNAL_PERIME_S ? `<span class="obs-alerte">il y a ${age} s</span>` : `il y a ${age} s`}` : ""}</p>
@@ -518,6 +559,7 @@ function rendreAvion(el) {
         <summary>Radar</summary>
         ${svgRadar(d?.avions ?? [])}
         <p class="mt-detail mt-discret">Positions ADS-B publiques (${echapper(d?.source ?? "adsb.lol")}), relais toutes les 10 s.
+          Positions par triangulation (MLAT) toutes les ~5 s ; direction calculée d'après la trace.
           Cercles tous les 5 km autour de la piste ${String(DZ.qfu).padStart(3, "0")}°/${DZ.qfu + 180}°.</p>
       </details>
     </div>
@@ -535,7 +577,7 @@ function svgRadar(avions) {
     const b = (relevement(DZ.lat, DZ.lon, lat, lon) * Math.PI) / 180;
     return [C + Math.sin(b) * dist * k, C - Math.cos(b) * dist * k];
   };
-  const anneaux = [5, 10, 15].map((km) => `
+  const anneaux = [5, 10, 15, 20].map((km) => `
     <circle cx="${C}" cy="${C}" r="${km * k}" class="r-anneau"/>
     <text x="${C + 3}" y="${C - km * k + 11}" class="r-km">${km}</text>`).join("");
   const largage = 4000;
@@ -544,9 +586,12 @@ function svgRadar(avions) {
     const trace = (etat.traces.get(a.hex) ?? []).map((p) => pos(p.lat, p.lon).map((v) => v.toFixed(1)).join(",")).join(" ");
     return `
       ${trace ? `<polyline points="${trace}" class="r-trace${a.club ? " club" : ""}"/>` : ""}
-      <g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${a.cap ?? 0})">
-        <path d="M0,-8 L5,6 L0,3 L-5,6 Z" class="r-avion${a.club ? " club" : ""}"/>
-      </g>
+      ${(() => {
+        const cap = a.cap ?? capDeTrace(a.hex);
+        return cap != null
+          ? `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${cap.toFixed(0)})"><path d="M0,-8 L5,6 L0,3 L-5,6 Z" class="r-avion${a.club ? " club" : ""}"/></g>`
+          : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5" class="r-avion${a.club ? " club" : ""}"/>`;
+      })()}
       <text x="${(x + 9).toFixed(1)}" y="${(y + 4).toFixed(1)}" class="r-etiq">${a.auSol ? "sol" : a.altitudeM != null ? `${(a.altitudeM / 1000).toLocaleString("fr-BE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km` : ""}</text>`;
   }).join("");
   const principal = avions[0];

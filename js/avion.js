@@ -6,6 +6,15 @@
 // le CORS : le relais (relais/worker.js) interroge, filtre avec ce module
 // et renvoie du JSON à l'app.
 //
+// F-GHGZ n'émet PAS sa position (pas d'ADS-B « out ») : il est localisé
+// par multilatération (MLAT) à partir de son transpondeur Mode S. Vérifié
+// dans les archives adsb.lol du 26/09 au 11/10/2026 : 100 % des positions
+// en MLAT, une toutes les ~5 s, de ~600 ft jusqu'à 15 200 ft, à 15 km au
+// plus du terrain, 13 à 18 montées par jour. Invisible au sol, au
+// décollage et à l'atterrissage : perdu sous 600-2 200 ft (200-700 m),
+// retrouvé après le décollage vers 1 800-4 300 ft (550-1 300 m). Le MLAT ne fournit pas de cap (calculé par l'app à partir
+// de la trace) et parfois pas de vitesse.
+//
 // Ce qu'on affiche est un FAIT reçu, jamais une déduction : position,
 // altitude, vitesse, montée/descente, âge du signal. Pas de signal ne
 // veut PAS dire « au sol » : l'avion peut ne pas émettre, ou être hors
@@ -27,8 +36,8 @@ export const AVIONS_CLUB = ["F-GHGZ"];
 /** Types d'avions de largage : un appareil de ce type près du terrain est montré, sans être donné pour l'avion du club. */
 export const TYPES_LARGAGE = ["C208", "PC6T", "PC6P", "DHC6"];
 
-export const RAYON_KM = 15;          // zone de largage et montée
-export const RAYON_NM = 9;           // ≈ 16,7 km, demandé au réseau
+export const RAYON_KM = 20;          // zone de largage et montée (15 km au plus relevés), avec marge
+export const RAYON_NM = 12;          // ≈ 22 km, demandé au réseau
 export const PLAFOND_FT = 18000;     // au-dessus, ce n'est pas un largage
 export const SIGNAL_PERIME_S = 60;   // au-delà, la position n'est plus « en direct »
 

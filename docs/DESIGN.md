@@ -111,6 +111,7 @@ séparé. Aucun APK sans demande.
 - Avion du club : immatriculation **F-GHGZ** (Cessna 208 Caravan, photographié à Namur de 2022 à 2025 ; capacité cohérente avec le site du club). **Confirmée** par un membre du club le 2026-10-25. Un autre avion de largage (C208, PC-6, Twin Otter) à moins de 15 km et sous 18 000 ft est montré, sans être présenté comme celui du club.
 - Affichage : ligne « Avion » du bloc Maintenant (altitude, montée/descente, distance et direction, vitesse, âge du signal) et radar SVG maison (sans carte ni bibliothèque externe) avec trace et jauge d'altitude jusqu'au largage (4 km).
 - Honnêteté : « pas de signal » n'est jamais présenté comme « au sol ».
+- **Source vérifiée (v2.5.1)** : F-GHGZ (Mode S 391CD9) n'émet pas d'ADS-B ; il est vu par **MLAT** seulement — toutes les ~5 s en vol, invisible sous 200-700 m. Cap calculé d'après la trace ; « dernier signal » affiché quand il disparaît. Délai jusqu'à l'écran : ~5 à 25 s.
 - Sobriété : interrogation toutes les 15 s seulement un jour d'ouverture (7h → coucher + 45 min) ou quand un avion est en vue, toutes les 2 min sinon, et jamais quand l'accueil n'est pas à l'écran.
 
 ### Nombre de sauts : saisie manuelle
