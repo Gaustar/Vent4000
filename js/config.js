@@ -203,4 +203,11 @@ export const RELAIS_CLUB = "https://vent4000-club.gaustar.workers.dev/club";
 // Avion de largage en direct (ADS-B adsb.lol / adsb.fi, filtré par js/avion.js).
 export const RELAIS_AVION = "https://vent4000-club.gaustar.workers.dev/avion";
 
-export const VERSION = "2.6.1";
+// Fond satellite du radar : orthophotos SPW (CC BY 4.0). Millésime figé plutôt qu'ORTHO_LAST, pour que
+// l'attribution affichée (ORTHO_ATTRIBUTION) reste exacte ; à changer ensemble à la prochaine campagne.
+export const ORTHO_WMS = "https://geoservices.wallonie.be/arcgis/services/IMAGERIE/ORTHO_2026_PRINTEMPS/MapServer/WMSServer";
+export const ORTHO_ATTRIBUTION = "Source : Service public de Wallonie (SPW) – Orthophotos 2026 Printemps (CC BY 4.0)";
+/** Repères au sol du radar 20 km : [nom, lat, lon] (centres OpenStreetMap, relevés le 2026-11-01). */
+export const REPERES = [["Namur", 50.4665, 4.8662], ["Gembloux", 50.5597, 4.6943], ["Fleurus", 50.4829, 4.5497], ["Éghezée", 50.5917, 4.9066]];
+
+export const VERSION = "2.7.0";

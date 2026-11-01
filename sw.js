@@ -4,7 +4,7 @@
 // avec repli sur la dernière prévision en cache (mode hors-ligne).
 // ============================================================
 
-const CACHE = "vent4000-v29";
+const CACHE = "vent4000-v30";
 const SHELL = [
   "./",
   "./index.html",
@@ -81,6 +81,22 @@ self.addEventListener("fetch", (e) => {
           return rep;
         })
         .catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // Photo aérienne du radar (SPW) : cache d'abord, sinon re-téléchargée à chaque rendu (10 s).
+  // Re-demandée en CORS : réponse lisible (une opaque coûte ~7 Mo de quota sous Chrome) et vérifiable,
+  // car le serveur répond 200 text/xml en cas d'erreur : on ne garde que les images.
+  if (url.hostname === "geoservices.wallonie.be") {
+    e.respondWith(
+      caches.match(e.request.url).then((enCache) => enCache ?? fetch(e.request.url, { mode: "cors", credentials: "omit" }).then((rep) => {
+        if (rep.ok && rep.headers.get("content-type")?.startsWith("image/")) {
+          const copie = rep.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copie));
+        }
+        return rep;
+      }))
     );
     return;
   }

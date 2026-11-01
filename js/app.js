@@ -2,11 +2,11 @@
 // Vent4000 — Application (UI) v2.4
 // ============================================================
 
-import { DZ, NIVEAUX_PRATIQUE, LIENS, RELAIS_CLUB, RELAIS_AVION, VERSION, LEGAL_BE, AERODROME, MODELES } from "./config.js";
+import { DZ, NIVEAUX_PRATIQUE, LIENS, RELAIS_CLUB, RELAIS_AVION, ORTHO_WMS, ORTHO_ATTRIBUTION, REPERES, VERSION, LEGAL_BE, AERODROME, MODELES } from "./config.js";
 import { ouvertureReelle, fermeParLeClub, estFerie } from "./ouverture.js";
 import { normaliserProfil, ventMaxEffectif, jourDisponible, convertirVent, exporterProfil, importerProfil,
   UNITES_VENT, THEMES, JOURS_SEMAINE, MARGE_MAX } from "./profil.js";
-import { phaseVol, distanceKm, relevement, vueDepuis, RAYON_KM, SIGNAL_PERIME_S } from "./avion.js";
+import { phaseVol, distanceKm, relevement, vueDepuis, emprise3857, RAYON_KM, SIGNAL_PERIME_S } from "./avion.js";
 import { regleEnClair, confianceEnClair, echeanceEnClair, directionEnClair, cielEnClair, visibiliteEnClair, tempsEnClair } from "./langage.js";
 import { chargerClub } from "./club.js";
 import { scoreHeure, fenetreSautable, meilleurVerdict, ventPiste } from "./scoring.js";
@@ -469,6 +469,7 @@ const CLE_DERNIER_VU = "vent4000.avion";
 const DERNIER_VU_MAX_MS = 2 * 3600e3;
 let minuteurAvion = null;
 let radarOuvert = false;
+let radarKm = RAYON_KM;   // échelle du radar : toute la zone (20 km) ou zoom sur le terrain (5 km)
 
 /** Dernière position reçue de l'avion du club : affichée quand il disparaît (au sol, sous la couverture). */
 function lireDernierVu() {
@@ -612,15 +613,24 @@ function rendreAvion(el) {
       ${texteDepuisMoi(a)}
       <details class="radar-cadre"${radarOuvert ? " open" : ""}>
         <summary>Voir sur le radar</summary>
+        <div class="choix-segment radar-zoom" role="group" aria-label="Échelle du radar">
+          ${[RAYON_KM, 5].map((km) => `<button type="button" class="segment" data-radar-km="${km}" aria-pressed="${radarKm === km}">${km} km</button>`).join("")}
+        </div>
         ${svgRadar(d?.avions ?? [])}
+        <p class="mt-detail mt-discret">${ORTHO_ATTRIBUTION}.</p>
         <p class="mt-detail mt-discret technique">Positions ADS-B publiques (${echapper(d?.source ?? "adsb.lol")}), relais toutes les 10 s.
           Positions par triangulation (MLAT) toutes les ~5 s ; direction calculée d'après la trace.
-          Cercles tous les 5 km autour de la piste ${String(DZ.qfu).padStart(3, "0")}°/${DZ.qfu + 180}°.</p>
+          Cercles tous les ${radarKm === RAYON_KM ? 5 : 1} km autour de la piste ${String(DZ.qfu).padStart(3, "0")}°/${DZ.qfu + 180}°.</p>
       </details>
       <div class="actions"><button type="button" class="btn secondaire" data-action="me-situer" aria-pressed="${etat.reglages.maPosition}">${etat.reglages.maPosition ? "Ne plus me situer" : "Me situer"}</button></div>
     </div>
     <span class="mt-age">${d?.recu ? ilYa(new Date(d.recu).getTime()) : ""}</span>`;
   el.querySelector(".radar-cadre").addEventListener("toggle", (e) => { radarOuvert = e.target.open; });
+  el.querySelectorAll("[data-radar-km]").forEach((b) => b.addEventListener("click", () => {
+    radarKm = Number(b.dataset.radarKm);
+    rendreAvion(el);
+    el.querySelector(`[data-radar-km="${radarKm}"]`).focus();   // le rendu a remplacé le bouton
+  }));
   el.querySelector('[data-action="me-situer"]').addEventListener("click", () => {
     const actif = !etat.reglages.maPosition;
     majProfil({ maPosition: actif }, { rerendre: false });
@@ -646,55 +656,72 @@ function texteDepuisMoi(a) {
     · ${v.distanceKm.toLocaleString("fr-BE")} km au sol${v.directeKm != null ? ` (${v.directeKm.toLocaleString("fr-BE")} km en ligne droite)` : ""}${imprecis}.</p>`;
 }
 
-/** Radar en SVG : terrain au centre, nord en haut, trace de l'avion, jauge d'altitude jusqu'au largage. */
+/** Radar en SVG sur photo aérienne : terrain au centre, nord en haut, trace de l'avion, jauge d'altitude jusqu'au largage. */
 function svgRadar(avions) {
   const C = 120;
   const R = 108;
-  const k = R / RAYON_KM;
-  const pos = (lat, lon) => {
+  const k = R / radarKm;
+  const pos = (lat, lon, auBord = false) => {
     const dist = distanceKm(DZ.lat, DZ.lon, lat, lon);
     const b = (relevement(DZ.lat, DZ.lon, lat, lon) * Math.PI) / 180;
-    return [C + Math.sin(b) * dist * k, C - Math.cos(b) * dist * k];
+    const d = auBord ? Math.min(dist, radarKm * 0.92) : dist;   // hors champ : posé au bord, dans la bonne direction
+    return [C + Math.sin(b) * d * k, C - Math.cos(b) * d * k];
   };
-  const anneaux = [5, 10, 15, 20].map((km) => `
+  // Près du bord droit, l'étiquette passe à gauche du point : ni coupée par le disque, ni sur la jauge.
+  const etiq = (x, y, texte) => x > C + R * 0.4
+    ? `<text x="${(x - 9).toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="end" class="r-etiq">${texte}</text>`
+    : `<text x="${(x + 9).toFixed(1)}" y="${(y + 4).toFixed(1)}" class="r-etiq">${texte}</text>`;
+  const loin = (km) => km > radarKm ? ` · à ${(Math.round(km * 10) / 10).toLocaleString("fr-BE")} km` : "";
+  const anneaux = (radarKm === RAYON_KM ? [5, 10, 15, 20] : [1, 2, 3, 4, 5]).map((km) => `
     <circle cx="${C}" cy="${C}" r="${km * k}" class="r-anneau"/>
     <text x="${C + 3}" y="${C - km * k + 11}" class="r-km">${km}</text>`).join("");
   const largage = 4000;
   const avionsSvg = avions.map((a) => {
-    const [x, y] = pos(a.lat, a.lon);
+    const [x, y] = pos(a.lat, a.lon, true);
     const trace = (etat.traces.get(a.hex) ?? []).map((p) => pos(p.lat, p.lon).map((v) => v.toFixed(1)).join(",")).join(" ");
     return `
-      ${trace ? `<polyline points="${trace}" class="r-trace${a.club ? " club" : ""}"/>` : ""}
+      ${trace ? `<polyline points="${trace}" class="r-trace-halo"/><polyline points="${trace}" class="r-trace${a.club ? " club" : ""}"/>` : ""}
       ${(() => {
         const cap = a.cap ?? capDeTrace(a.hex);
         return cap != null
           ? `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${cap.toFixed(0)})"><path d="M0,-8 L5,6 L0,3 L-5,6 Z" class="r-avion${a.club ? " club" : ""}"/></g>`
           : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5" class="r-avion${a.club ? " club" : ""}"/>`;
       })()}
-      <text x="${(x + 9).toFixed(1)}" y="${(y + 4).toFixed(1)}" class="r-etiq">${a.auSol ? "sol" : a.altitudeM != null ? `${(a.altitudeM / 1000).toLocaleString("fr-BE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km` : ""}</text>`;
+      ${etiq(x, y, (a.auSol ? "sol" : a.altitudeM != null ? `${a.altitudeM.toLocaleString("fr-BE")} m` : "") + loin(a.distanceKm))}`;
   }).join("");
   const m = etat.moi;
-  const moiSvg = m && distanceKm(DZ.lat, DZ.lon, m.lat, m.lon) <= RAYON_KM
-    ? (() => { const [x, y] = pos(m.lat, m.lon); return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5" class="r-moi"/><text x="${(x + 8).toFixed(1)}" y="${(y + 4).toFixed(1)}" class="r-etiq">toi</text>`; })()
+  const moiSvg = m
+    ? (() => { const [x, y] = pos(m.lat, m.lon, true); return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5" class="r-moi"/>${etiq(x, y, `toi${loin(distanceKm(DZ.lat, DZ.lon, m.lat, m.lon))}`)}`; })()
+    : "";
+  const reperes = radarKm === RAYON_KM
+    ? REPERES.map(([nom, lat, lon]) => { const [x, y] = pos(lat, lon); return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" class="r-repere">${nom}</text>`; }).join("")
     : "";
   const principal = avions[0];
   const hJauge = 200;
   const yAlt = (m) => 20 + hJauge - (Math.min(m, 4500) / 4500) * hJauge;
+  // Image figée par échelle (même URL à chaque rendu) : le service worker la garde en cache.
+  const photo = `${ORTHO_WMS}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=0&STYLES=&CRS=EPSG:3857&BBOX=${emprise3857(DZ.lat, DZ.lon, radarKm).map(Math.round).join(",")}&WIDTH=640&HEIGHT=640&FORMAT=image/jpeg`;
   return `
-    <svg class="radar" viewBox="0 0 312 240" role="img" aria-label="Radar : position de l'avion autour du terrain">
+    <svg class="radar" viewBox="0 0 326 240" role="img" aria-label="Radar : position de l'avion autour du terrain, sur photo aérienne">
+      <defs><clipPath id="r-disque"><circle cx="${C}" cy="${C}" r="${R}"/></clipPath></defs>
       <circle cx="${C}" cy="${C}" r="${R}" class="r-fond"/>
-      ${anneaux}
-      <line x1="${C}" y1="${C - R}" x2="${C}" y2="${C + R}" class="r-axe"/>
-      <line x1="${C - R}" y1="${C}" x2="${C + R}" y2="${C}" class="r-axe"/>
+      <g clip-path="url(#r-disque)">
+        <image href="${echapper(photo)}" x="${C - R}" y="${C - R}" width="${2 * R}" height="${2 * R}" preserveAspectRatio="none"/>
+        <circle cx="${C}" cy="${C}" r="${R}" class="r-voile"/>
+        ${anneaux}
+        <line x1="${C}" y1="${C - R}" x2="${C}" y2="${C + R}" class="r-axe"/>
+        <line x1="${C - R}" y1="${C}" x2="${C + R}" y2="${C}" class="r-axe"/>
+        <g transform="rotate(${DZ.qfu} ${C} ${C})"><rect x="${C - 2}" y="${C - 9}" width="4" height="18" rx="1" class="r-piste"/></g>
+        ${reperes}
+        ${moiSvg}
+        ${avionsSvg}
+      </g>
       <text x="${C}" y="${C - R - 2}" class="r-nord">N</text>
-      <g transform="rotate(${DZ.qfu} ${C} ${C})"><rect x="${C - 2}" y="${C - 9}" width="4" height="18" rx="1" class="r-piste"/></g>
-      ${moiSvg}
-      ${avionsSvg}
       <g class="r-jauge">
         <rect x="256" y="20" width="10" height="${hJauge}" rx="3" class="r-jauge-fond"/>
         ${principal?.altitudeM != null ? `<rect x="256" y="${yAlt(principal.altitudeM).toFixed(1)}" width="10" height="${(20 + hJauge - yAlt(principal.altitudeM)).toFixed(1)}" rx="3" class="r-jauge-niveau"/>` : ""}
         <line x1="250" y1="${yAlt(largage)}" x2="272" y2="${yAlt(largage)}" class="r-largage"/>
-        <text x="275" y="${yAlt(largage) + 4}" class="r-km">4 km</text>
+        <text x="275" y="${yAlt(largage) + 4}" class="r-km">4 000 m</text>
         <text x="275" y="${20 + hJauge + 4}" class="r-km">sol</text>
       </g>
     </svg>`;

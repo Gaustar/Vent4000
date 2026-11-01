@@ -608,12 +608,19 @@ button { font: inherit; color: inherit; }
 .radar-cadre summary { min-height: var(--cible); display: flex; align-items: center; cursor: pointer; color: var(--accent); font-weight: 600; font-size: var(--t-s); }
 .radar { display: block; width: 100%; max-width: 320px; height: auto; margin: 0 auto; }
 .r-fond { fill: var(--surface-2); stroke: var(--bord); }
-.r-anneau { fill: none; stroke: var(--bord-fort); stroke-dasharray: 3 4; }
-.r-axe { stroke: var(--bord); }
+/* Voile couleur du thème sur la photo aérienne : les couleurs du radar gardent leur contraste. */
+.r-voile { fill: var(--surface); opacity: 0.35; }
+.r-anneau { fill: none; stroke: var(--encre-2); stroke-dasharray: 3 4; opacity: 0.7; }
+.r-axe { stroke: var(--encre-3); opacity: 0.5; }
+.r-km, .r-etiq { paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
+.r-avion { stroke: var(--surface); stroke-width: 1.5; }
+.radar-zoom { justify-content: center; margin-bottom: 6px; }
 .r-km { fill: var(--encre-3); font-size: 10px; font-family: var(--mono); }
 .r-nord { fill: var(--encre-2); font-size: 11px; font-family: var(--titre); text-anchor: middle; }
 .r-piste { fill: var(--encre-2); }
-.r-trace { fill: none; stroke: var(--encre-3); stroke-width: 1.5; stroke-linejoin: round; opacity: 0.8; }
+.r-trace { fill: none; stroke: var(--encre-3); stroke-width: 2; stroke-linejoin: round; }
+.r-trace-halo { fill: none; stroke: var(--surface); stroke-width: 4.5; stroke-linejoin: round; opacity: 0.7; }
+.r-repere { fill: var(--encre-2); font-size: 9.5px; font-family: var(--titre); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
 .r-trace.club { stroke: var(--accent); }
 .r-avion { fill: var(--encre-2); }
 .r-avion.club { fill: var(--accent); }

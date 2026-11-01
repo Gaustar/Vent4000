@@ -61,6 +61,16 @@ export function relevement(lat1, lon1, lat2, lon2) {
   return (Math.atan2(y, x) / rad + 360) % 360;
 }
 
+/** Emprise Web Mercator (EPSG:3857) d'un carré de ±km autour d'un point, nord en haut : fond satellite du radar. */
+export function emprise3857(lat, lon, km) {
+  const R = 6378137;
+  const rad = Math.PI / 180;
+  const x = lon * rad * R;
+  const y = Math.log(Math.tan(Math.PI / 4 + (lat * rad) / 2)) * R;
+  const h = (km * 1000) / Math.cos(lat * rad);   // un mètre au sol vaut 1/cos(lat) m Mercator
+  return [x - h, y - h, x + h, y + h];
+}
+
 const nombre = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 /**

@@ -1,6 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lireAvions, phaseVol, distanceKm, relevement, vueDepuis } from "./avion.js";
+import { lireAvions, phaseVol, distanceKm, relevement, vueDepuis, emprise3857 } from "./avion.js";
+
+test("emprise3857 : les bords du fond satellite tombent à ±km au sol du terrain", () => {
+  const [x0, y0, x1, y1] = emprise3857(50.4897, 4.7697, 5);
+  const R = 6378137;
+  const lon = (x) => (x / R) * (180 / Math.PI);
+  const lat = (y) => (2 * Math.atan(Math.exp(y / R)) - Math.PI / 2) * (180 / Math.PI);
+  assert.ok(Math.abs(distanceKm(50.4897, 4.7697, 50.4897, lon(x1)) - 5) < 0.05);   // bord est
+  assert.ok(Math.abs(distanceKm(50.4897, 4.7697, lat(y1), 4.7697) - 5) < 0.05);    // bord nord
+  assert.ok(Math.abs(distanceKm(50.4897, 4.7697, lat(y0), 4.7697) - 5) < 0.05);    // bord sud
+  assert.ok(Math.abs((x0 + x1) / 2 / R * (180 / Math.PI) - 4.7697) < 1e-9);
+});
 
 // Format « readsb » d'adsb.lol (champs relevés le 2026-10-25) ; positions synthétiques autour d'EBNM.
 const REPONSE = { ac: [

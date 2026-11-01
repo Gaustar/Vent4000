@@ -4,6 +4,29 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [2.7.0] — 2026-11-01
+
+### Ajouté
+- **Radar sur photo aérienne** : le fond du radar est l'orthophoto la plus
+  récente du Géoportail de la Wallonie (SPW, données ouvertes), pour voir
+  au-dessus de quel champ ou village passe l'avion. Voile aux couleurs du
+  thème et étiquettes détourées pour rester lisibles (jour et nuit).
+- **Zoom 20 km / 5 km** autour du terrain (cercles tous les 5 km ou 1 km).
+  Un avion (ou « toi ») plus loin que l'échelle reste posé au bord du
+  radar, dans sa direction, avec sa distance (« · à 12,2 km »).
+- **Repères au sol** à 20 km : Namur, Gembloux, Fleurus, Éghezée
+  (centres OpenStreetMap).
+- Le service worker garde la photo en cache : pas de re-téléchargement à
+  chaque rafraîchissement du radar (10 s), et elle reste visible hors-ligne.
+  Elle est demandée en CORS et seule une vraie image est gardée (le serveur
+  répond « 200 text/xml » en cas d'erreur).
+
+### Modifié
+- Altitude de l'avion sur le radar en mètres (« 2 990 m », jauge
+  « 4 000 m ») : « 3,0 km » se confondait avec les cercles de distance.
+- Étiquettes près du bord droit placées à gauche du point (plus coupées).
+- Trace de l'avion plus épaisse, avec un liseré, lisible sur la photo.
+
 ## [2.6.1] — 2026-10-25
 
 ### Modifié
