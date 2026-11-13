@@ -5,7 +5,7 @@
 import { DZ, NIVEAUX_PRATIQUE, LIENS, RELAIS_CLUB, RELAIS_AVION, ORTHO_WMS, ORTHO_ATTRIBUTION, REPERES, VERSION, LEGAL_BE, AERODROME, MODELES } from "./config.js";
 import { ouvertureReelle, fermeParLeClub, estFerie } from "./ouverture.js";
 import { normaliserProfil, ventMaxEffectif, jourDisponible, convertirVent, exporterProfil, importerProfil,
-  UNITES_VENT, THEMES, JOURS_SEMAINE, MARGE_MAX } from "./profil.js";
+  UNITES_VENT, THEMES, JOURS_SEMAINE, MARGE_MAX, reprise } from "./profil.js";
 import { phaseVol, distanceKm, relevement, vueDepuis, emprise3857, RAYON_KM, SIGNAL_PERIME_S } from "./avion.js";
 import { regleEnClair, confianceEnClair, echeanceEnClair, directionEnClair, cielEnClair, visibiliteEnClair, tempsEnClair } from "./langage.js";
 import { chargerClub } from "./club.js";
@@ -807,6 +807,7 @@ function rendreSemaine() {
   const prenom = etat.reglages.prenom;
   $("#salut").hidden = !prenom;
   if (prenom) $("#salut").textContent = `Salut ${prenom}${etat.reglages.sauts != null ? ` · ${etat.reglages.sauts} saut${etat.reglages.sauts > 1 ? "s" : ""}` : ""}`;
+  rendreReprise();
   rendreReponse(jours);
   rendreClub($("#mt-club"));
   rendreObsCompacte($("#mt-obs"));
@@ -1248,6 +1249,10 @@ function rendreReglages() {
   const p = etat.reglages;
   $("#reglage-prenom").value = p.prenom;
   $("#reglage-sauts").value = p.sauts ?? "";
+  $("#reglage-dernier-saut").value = p.dernierSaut ?? "";
+  $("#reglage-aff").value = p.aff ?? "";
+  $("#champ-aff").hidden = p.niveau !== "aff";
+  rendreReprise();
   $("#reglage-niveau").innerHTML = Object.entries(NIVEAUX_PRATIQUE)
     .map(([cle, n]) => `<option value="${cle}"${cle === p.niveau ? " selected" : ""}>${n.label}</option>`)
     .join("");
@@ -1282,6 +1287,15 @@ function rendreReglages() {
 }
 
 /** Applique une modification du profil : validée, enregistrée, affichée. */
+/** Ce qu'il faut repasser après une absence (tableau du Paraclub) : accueil + réglages. */
+function rendreReprise() {
+  const r = reprise(etat.reglages);
+  $("#reprise").hidden = !r?.alerte;
+  $("#reprise").textContent = r?.alerte ? r.texte : "";
+  $("#reglage-reprise").textContent = r ? `${r.texte} Source : tableau « Absence / Expérience » du Paraclub.`
+    : etat.reglages.niveau === "tandem" ? "" : "Indique la date de ton dernier saut : l'app te dira ce que le club te demande de repasser.";
+}
+
 function majProfil(modif, { rerendre = true } = {}) {
   etat.reglages = normaliserProfil({ ...etat.reglages, ...modif });
   sauverReglages();
@@ -1305,6 +1319,8 @@ function brancherReglages() {
     majProfil({ sauts: e.target.value !== "" && Number.isInteger(v) && v >= 0 ? v : null });
   });
   $("#reglage-niveau").addEventListener("change", (e) => majProfil({ niveau: e.target.value, niveauChoisi: true }));
+  $("#reglage-dernier-saut").addEventListener("change", (e) => majProfil({ dernierSaut: e.target.value || null }));
+  $("#reglage-aff").addEventListener("change", (e) => majProfil({ aff: e.target.value || null }));
   $("#reglage-marge").addEventListener("change", (e) => {
     const v = Math.round(Number(e.target.value));
     majProfil({ marge: Number.isFinite(v) ? Math.max(0, Math.min(Number(e.target.max), v)) : 0 });

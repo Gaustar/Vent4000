@@ -63,3 +63,22 @@ test("export / import : aller-retour fidèle, code invalide → null", () => {
   assert.equal(importerProfil("V4K2-@@@"), null);
   assert.equal(importerProfil(""), null);
 });
+
+test("reprise : tableau Absence / Expérience du Paraclub", async () => {
+  const { reprise } = await import("./profil.js");
+  const jour = new Date(2026, 10, 13);
+  const r = (p) => reprise({ niveau: "brevetA", ...p }, jour);
+  assert.equal(reprise({ niveau: "brevetA", sauts: 10, dernierSaut: null }, jour), null);
+  assert.equal(reprise({ niveau: "tandem", dernierSaut: "2020-01-01" }, jour), null);
+  assert.equal(r({ sauts: 10, dernierSaut: "2026-09-14" }).alerte, false);          // 1 mois et 30 jours
+  assert.match(r({ sauts: 10, dernierSaut: "2026-09-13" }).texte, /à repasser : AFF 7\.$/);
+  assert.match(r({ sauts: 24, dernierSaut: "2026-05-13" }).texte, /Théorie \+ AFF 4 \+ AFF 7/);
+  assert.equal(r({ sauts: 25, dernierSaut: "2026-09-01" }).alerte, false);          // « - » dans le tableau
+  assert.match(r({ sauts: 99, dernierSaut: "2026-05-01" }).texte, /Solo \+ 1 saut CSC/);
+  assert.match(r({ sauts: 99, dernierSaut: "2025-01-01" }).texte, /Théorie \+ AFF 7 \+ Solo\. Au-delà d'un an/);
+  assert.match(r({ sauts: 100, dernierSaut: "2026-05-01" }).texte, /demande au club/);
+  assert.match(r({ sauts: null, dernierSaut: "2026-05-01" }).texte, /nombre de sauts/);
+  assert.match(reprise({ niveau: "aff", aff: "5-solo", dernierSaut: "2026-08-01" }, jour).texte, /à partir du niveau 4/);
+  assert.match(reprise({ niveau: "aff", aff: "2-4", dernierSaut: "2026-08-01" }, jour).texte, /Théorie \+ Recommencer dernier niveau réussi/);
+  assert.match(reprise({ niveau: "aff", dernierSaut: "2026-08-01" }, jour).texte, /niveau AFF/);
+});

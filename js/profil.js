@@ -38,6 +38,8 @@ export function profilParDefaut() {
     niveauChoisi: false,
     marge: 0,
     sauts: null,
+    dernierSaut: null,   // "AAAA-MM-JJ", saisi par le membre
+    aff: null,           // "2-4" | "5-solo" : ligne du tableau de reprise pour un élève AFF
     jours: { 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, feries: true },
     theme: "auto",
     unite: "kmh",
@@ -86,6 +88,8 @@ export function normaliserProfil(brut) {
   }
 
   p.sauts = entier(brut.sauts, 0, 100000);
+  if (typeof brut.dernierSaut === "string" && /^\d{4}-\d{2}-\d{2}$/.test(brut.dernierSaut) && !Number.isNaN(Date.parse(brut.dernierSaut))) p.dernierSaut = brut.dernierSaut;
+  if (brut.aff === "2-4" || brut.aff === "5-solo") p.aff = brut.aff;
 
   if (brut.jours && typeof brut.jours === "object") {
     for (const cle of Object.keys(p.jours)) {
@@ -113,6 +117,55 @@ export function ventMaxEffectif(profil) {
 export function jourDisponible(profil, date, estFerie = false) {
   const j = profil?.jours ?? profilParDefaut().jours;
   return j[date.getDay()] === true || (estFerie && j.feries === true);
+}
+
+// ------------------------------------------------------------
+// Reprise après une absence : tableau « Absence / Expérience » du Paraclub.
+// Textes recopiés tels quels. Seule une partie du tableau est connue :
+// rien au-delà de « < 100 » sauts ni après la colonne « 1 an » — dans ces
+// cas l'app renvoie vers le club, elle ne devine pas.
+// ------------------------------------------------------------
+export const REPRISE = {
+  "aff2-4":    { 2: "Recommencer dernier niveau réussi", 3: "Théorie + Recommencer dernier niveau réussi", 6: "Théorie + Recommencer à partir du niveau 2", 12: "Théorie + Recommencer à partir du niveau 2" },
+  "aff5-solo": { 2: "Recommencer dernier niveau réussi", 3: "Théorie + Recommencer à partir du niveau 4", 6: "Théorie + Recommencer à partir du niveau 4", 12: "Théorie + Recommencer à partir du niveau 4" },
+  "<25":       { 2: "AFF 7", 3: "Théorie + AFF 7", 6: "Théorie + AFF 4 + AFF 7", 12: "Théorie + AFF 4 + AFF 7" },
+  "<100":      { 2: null, 3: "Solo", 6: "Solo + 1 saut CSC", 12: "Théorie + AFF 7 + Solo" },
+};
+
+/** Mois entiers écoulés entre "AAAA-MM-JJ" et aujourd'hui. */
+export function moisDepuis(dernierSaut, aujourdhui = new Date()) {
+  const [a, m, j] = dernierSaut.split("-").map(Number);
+  return (aujourdhui.getFullYear() - a) * 12 + (aujourdhui.getMonth() + 1 - m) - (aujourdhui.getDate() < j ? 1 : 0);
+}
+
+/**
+ * Ce que le membre doit repasser d'après le tableau du club.
+ * @returns {{texte: string, alerte: boolean}|null} null = pas concerné ou date inconnue ;
+ *   alerte = quelque chose à repasser (ou à demander au club).
+ */
+export function reprise(profil, aujourdhui = new Date()) {
+  if (!profil?.dernierSaut || profil.niveau === "tandem") return null;
+  const mois = moisDepuis(profil.dernierSaut, aujourdhui);
+  const colonne = [12, 6, 3, 2].find((c) => mois >= c);
+  if (!colonne) return { texte: "Dernier saut il y a moins de 2 mois : le tableau du club ne demande rien.", alerte: false };
+
+  const depuis = `Dernier saut il y a ${mois} mois`;
+  let ligne;
+  if (profil.niveau === "aff") {
+    if (!profil.aff) return { texte: `${depuis} : indique ton niveau AFF pour savoir quoi repasser.`, alerte: true };
+    ligne = `aff${profil.aff}`;
+  } else if (profil.sauts == null) {
+    return { texte: `${depuis} : indique ton nombre de sauts pour savoir quoi repasser.`, alerte: true };
+  } else if (profil.sauts < 25) ligne = "<25";
+  else if (profil.sauts < 100) ligne = "<100";
+  else return { texte: `${depuis} : à partir de 100 sauts, cette partie du tableau du club n'est pas dans l'app — demande au club.`, alerte: true };
+
+  const quoi = REPRISE[ligne][colonne];
+  if (!quoi) return { texte: `${depuis} : le tableau du club ne demande rien.`, alerte: false };
+  return {
+    texte: `${depuis} — à repasser : ${quoi}.${mois > 12 ? " Au-delà d'un an, le tableau du club continue : vérifie avec le club." : ""}`,
+    alerte: true,
+  };
 }
 
 /** Valeur de vent (km/h) dans l'unité choisie, arrondie. */

@@ -4,6 +4,16 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [2.8.0] — 2026-11-13
+
+### Ajouté
+- **Reprise après une absence** : avec ton nombre de sauts et la date de ton
+  dernier saut (Réglages), l'accueil affiche ce que le club te demande de
+  repasser, d'après son tableau « Absence / Expérience ». Les élèves AFF
+  indiquent leur niveau (2 à 4, ou 5 à Solo).
+- Seule une partie du tableau est reprise (jusqu'à moins de 100 sauts,
+  jusqu'à la colonne « 1 an ») : au-delà, l'app renvoie vers le club.
+
 ## [2.7.0] — 2026-11-01
 
 ### Ajouté

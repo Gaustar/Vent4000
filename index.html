@@ -72,6 +72,7 @@
     <!-- ============ Vue Semaine ============ -->
     <section id="vue-semaine" hidden>
       <p id="salut" class="salut" hidden></p>
+      <p id="reprise" class="reprise" role="status" hidden></p>
 
       <button id="reponse" class="reponse" hidden></button>
 
@@ -190,6 +191,19 @@
           <small class="champ-borne">À mettre à jour toi-même. Affiché les jours limites, à côté du lien
             vers la limite de sauts du club ; il ne change jamais le verdict.</small>
         </label>
+        <label class="champ">
+          <span>Date de ton dernier saut <em>facultatif</em></span>
+          <input id="reglage-dernier-saut" type="date">
+        </label>
+        <label class="champ" id="champ-aff" hidden>
+          <span>Niveau AFF atteint</span>
+          <select id="reglage-aff">
+            <option value="">—</option>
+            <option value="2-4">AFF 2 à 4</option>
+            <option value="5-solo">AFF 5 à Solo</option>
+          </select>
+        </label>
+        <p id="reglage-reprise" class="champ-borne" role="status"></p>
       </details>
 
       <details class="section">
