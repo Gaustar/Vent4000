@@ -35,6 +35,8 @@ const KT = 1.852;
 // ============================================================
 export const LEGAL_BE = {
   ventMoyenMaxSol: Math.floor(25 * KT),   // 46 km/h
+  // Arrondi vers le bas, comme les bases des METAR/TAF (« 030 » = 3000 ft → 914 m) : avec 915,
+  // une base à 3000 ft pile, conforme, serait refusée.
   plafondMinAGL: Math.floor(3000 * FT),   // 914 m
   visibiliteMin: 3000,                    // m
   source: "CIR/GDF-05 §6",
@@ -102,7 +104,9 @@ export const COUCHE_PLAFOND = 62.5; // %
 //  - UKMO UK 2 km (Met Office) — base des nuages ..... ~54 h
 // Au-delà (« régional », moins précis) :
 //  - ICON-EU (DWD, 7 km) ~5 j · ECMWF IFS (9 km) 7 j · ARPEGE Europe (10 km) ~4,5 j
-// `base` : le modèle fournit la hauteur de la base des nuages.
+// `base` : le modèle fournit la hauteur de la base des nuages. Elle est comptée depuis le SOL
+// (vérifié le 2026-11-13 : sur des points de grille à 3000-3500 m d'altitude, les bases valent
+// 0 à 900 m) ; 0 = pas de base calculée.
 // ============================================================
 export const MODELES = [
   { id: "meteofrance_arome_france_hd",  nom: "AROME HD",       maille: "1,3 km", hr: true },
@@ -210,4 +214,4 @@ export const ORTHO_ATTRIBUTION = "Source : Service public de Wallonie (SPW) – 
 /** Repères au sol du radar 20 km : [nom, lat, lon] (centres OpenStreetMap, relevés le 2026-11-01). */
 export const REPERES = [["Namur", 50.4665, 4.8662], ["Gembloux", 50.5597, 4.6943], ["Fleurus", 50.4829, 4.5497], ["Éghezée", 50.5917, 4.9066]];
 
-export const VERSION = "2.8.1";
+export const VERSION = "2.9.0";

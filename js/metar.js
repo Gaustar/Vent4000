@@ -89,6 +89,7 @@ export function lireConditions(tokens) {
   if (tempsDit) {
     c.temps = temps;
     c.orage = temps.some((t) => t.includes("TS") && !t.startsWith("VC"));
+    c.orageVoisin = temps.some((t) => t.includes("TS") && t.startsWith("VC"));
     c.precip = temps.some((t) => /(DZ|RA|SN|SG|PL|GR|GS|UP)/.test(t) && !t.startsWith("VC"));
     c.brouillard = temps.some((t) => /FG/.test(t) && !t.startsWith("VC"));
   }
@@ -136,8 +137,9 @@ export function parseMetar(brut, maintenant = new Date()) {
     station, obs, brut,
     dir: c.dir ?? null, vent: c.vent ?? null, rafales: c.rafales ?? null, variable: !!c.variable,
     visibilite: c.visibilite ?? null, cavok: !!c.cavok,
-    nuages: c.nuages ?? [], plafond: c.plafond ?? Infinity, cb: !!c.cb, convectif: c.convectif ?? null,
-    temps: c.temps ?? [], orage: !!c.orage, precip: !!c.precip, brouillard: !!c.brouillard,
+    nuages: c.nuages ?? [], // Aucun groupe de nuages lisible (« OVC/// », capteur en panne) : plafond inconnu, jamais « pas de plafond ».
+    plafond: c.plafond ?? null, cb: !!c.cb, convectif: c.convectif ?? null,
+    temps: c.temps ?? [], orage: !!c.orage, orageVoisin: !!c.orageVoisin, precip: !!c.precip, brouillard: !!c.brouillard,
     temp: c.temp ?? null, pointRosee: c.pointRosee ?? null,
   };
 }

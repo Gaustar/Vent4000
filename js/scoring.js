@@ -86,10 +86,12 @@ export function scoreHeure(h, seuils, aero = {}) {
   for (const regle of REGLES) {
     const decision = { ...regle, statut: "ok", detail: "", echecs: 0, total: 0 };
 
-    // L'observation ne remplace la prévision que pour ce qu'elle mesure.
+    // L'observation (Charleroi, à 22 km) tranche seule quand elle est MAUVAISE. Bonne, elle vote
+    // avec les prévisions : elle ne peut pas effacer ce qu'elles annoncent pour Namur.
     const resObs = obs?.resultats[regle.id];
-    if (resObs && resObs.statut !== "inconnu") {
-      decision.statut = resObs.statut === "echec" ? "violee" : resObs.statut === "limite" ? "limite" : "ok";
+    const obsOk = resObs?.statut === "ok";
+    if (resObs && resObs.statut !== "inconnu" && !obsOk) {
+      decision.statut = resObs.statut === "echec" ? "violee" : "limite";
       decision.detail = `${obs.nom} : ${resObs.detail}`;
       decision.total = 1;
       decision.echecs = resObs.statut === "echec" ? 1 : 0;
@@ -98,8 +100,9 @@ export function scoreHeure(h, seuils, aero = {}) {
       continue;
     }
 
-    const avis = voix.map((s) => ({ s, res: s.resultats[regle.id] })).filter((x) => x.res && x.res.statut !== "inconnu");
-    if (!avis.length && !voix.some((s) => s.resultats[regle.id])) continue; // règle non applicable
+    const votants = obsOk ? [obs, ...voix] : voix;
+    const avis = votants.map((s) => ({ s, res: s.resultats[regle.id] })).filter((x) => x.res && x.res.statut !== "inconnu");
+    if (!avis.length && !votants.some((s) => s.resultats[regle.id])) continue; // règle non applicable
     decision.total = avis.length;
     decision.echecs = avis.filter((x) => x.res.statut === "echec").length;
     const limites = avis.filter((x) => x.res.statut === "limite");
@@ -124,19 +127,37 @@ export function scoreHeure(h, seuils, aero = {}) {
         : `${decision.echecs}/${decision.total} sources en échec — ${ex.s.nom} : ${ex.res.detail}`;
       if (varEchec.length) decision.detail += ` · TAF : ${varEchec.map((v) => v.libelle).join(" ; ")}`;
     }
+    // Prévisions en échec mais observation conforme : ni rouge contre le réel, ni vert contre les prévisions.
+    if (obsOk && decision.statut === "violee") {
+      decision.statut = "incertaine";
+      decision.detail += ` · ${obs.nom} conforme (${resObs.detail})`;
+    }
+    // Plafond : une majorité de modèles annonce une couche basse ≥ 5/8 sans en donner la hauteur,
+    // et aucune source ne la mesure — les « conformes » ne voient simplement pas de couche.
+    if (regle.id === "plafond" && decision.statut === "ok") {
+      const modeles = voix.filter((s) => s.type === "modele");
+      const sansHauteur = modeles.filter((s) => s.conditions.coucheBasse && s.conditions.plafond == null);
+      const mesuree = avis.some((x) => Number.isFinite(x.s.conditions.plafond));
+      if (sansHauteur.length * 2 > modeles.length && !mesuree) {
+        decision.statut = "limite";
+        decision.detail = `${sansHauteur.length}/${modeles.length} modèles annoncent une couche basse, hauteur inconnue`;
+      }
+    }
     regles.push(decision);
   }
 
   const violees = regles.filter((x) => x.statut === "violee");
   const douteuses = regles.filter((x) => x.statut === "incertaine" || x.statut === "nonVerifiable" || x.statut === "limite");
-  const verdict = violees.length ? "rouge" : douteuses.length ? "orange" : "vert";
+  // Sans aucune source, rien n'est vérifié : jamais vert.
+  const verdict = violees.length ? "rouge" : douteuses.length || !sources.length ? "orange" : "vert";
   const raisons = (violees.length ? violees : douteuses).map((x) => `${x.label} — ${x.detail}`);
+  if (!sources.length) raisons.push("Aucune donnée disponible pour cette heure");
 
   // Accord global : sources qui ne contredisent aucune règle. Parmi elles,
   // une source est « partielle » si elle ne fournit pas la donnée d'une
   // condition légale (base d'une couche basse, visibilité…) : elle ne
   // contredit rien, mais elle ne valide pas tout non plus.
-  const evaluees = obs ? [obs] : voix;
+  const evaluees = sources;
   for (const s of sources) {
     const res = Object.entries(s.resultats);
     s.favorable = res.every(([, x]) => x.statut === "ok" || x.statut === "inconnu");
@@ -165,7 +186,8 @@ export function ventPiste(vitesse, direction, qfu = DZ.qfu) {
 
 /**
  * Meilleure fenêtre sautable d'un créneau : la plus longue plage d'heures
- * consécutives (≥ 2 h) tenable, en privilégiant une plage entièrement verte.
+ * consécutives (≥ 2 h) tenable, en privilégiant une plage entièrement verte ;
+ * à défaut, une heure tenable isolée donne « orange » (fenêtre courte).
  * Une heure `h` couvre [h, h+1[ : la plage 10h-12h se lit « 10h → 13h ».
  */
 export function fenetreSautable(heures) {
@@ -196,6 +218,9 @@ export function fenetreSautable(heures) {
   if (verte) return { verdict: "vert", ...verte };
   const tenable = plusLonguePlage((v) => v !== "rouge");
   if (tenable) return { verdict: "orange", ...tenable };
+  // Une seule heure tenable (fin de journée, éclaircie) : courte, mais pas « ça ne saute pas ».
+  const isolee = heures.find((h) => h.verdict !== "rouge");
+  if (isolee) return { verdict: "orange", debut: isolee.heure, fin: isolee.heure + 1, duree: 1 };
   return { verdict: "rouge", debut: null, fin: null, duree: 0 };
 }
 

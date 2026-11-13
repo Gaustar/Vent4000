@@ -6,6 +6,8 @@
   <title>Vent4000 — Ça saute à Namur ?</title>
   <meta name="description" content="Météo parachutisme du Paraclub de Namur (EBNM) : règles CIR/GDF-05 et FWCP par brevet, appliquées à l'observation et au TAF de Charleroi et aux modèles à 1,3-2,2 km.">
   <meta name="theme-color" content="#0B1016">
+  <!-- Défense en profondeur : seuls ces serveurs peuvent être joints, aucun script étranger ne peut s'exécuter. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://geoservices.wallonie.be; connect-src 'self' https://api.open-meteo.com https://api.met.no https://vent4000-club.gaustar.workers.dev https://bestat.statbel.fgov.be https://geoservices.wallonie.be; object-src 'none'; base-uri 'self'; form-action 'none'">
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
@@ -75,6 +77,7 @@
       <p id="reprise" class="reprise" role="status" hidden></p>
 
       <button id="reponse" class="reponse" hidden></button>
+      <p class="note-hypotheses">Indication seulement : la décision de sauter appartient au club (responsable technique, point météo du jour).</p>
 
       <h2 class="etiquette">Maintenant</h2>
       <div class="maintenant">
@@ -110,6 +113,7 @@
           <div class="hero-texte">
             <p id="jour-verdict-texte" class="hero-verdict"></p>
             <p id="jour-verdict-quand" class="hero-quand"></p>
+            <p class="note-hypotheses">Indication seulement : la décision appartient au club.</p>
           </div>
           <div class="hero-jauge technique" id="jour-jauge"></div>
         </div>
@@ -362,7 +366,7 @@
   </main>
 
   <footer class="pied">
-    <nav class="pied-liens">
+    <nav class="pied-liens" aria-label="Liens utiles">
       <a id="lien-irm" target="_blank" rel="noopener">IRM</a>
       <a id="lien-windy" target="_blank" rel="noopener">Windy</a>
       <a id="lien-club" target="_blank" rel="noopener">Paraclub</a>

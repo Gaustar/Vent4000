@@ -41,6 +41,7 @@ export function confianceEnClair(jour) {
 }
 
 /** « aujourd'hui », « demain », « dans 4 jours ». */
+/** @param {number} index  nombre de jours d'ici la date (0 = aujourd'hui) */
 export function echeanceEnClair(index) {
   if (index === 0) return "aujourd'hui";
   if (index === 1) return "demain";
@@ -65,6 +66,7 @@ const metres = (m) => (m >= 1000 ? `${(Math.round(m / 100) / 10).toLocaleString(
  */
 export function cielEnClair(m) {
   if (m?.cavok) return "ciel dégagé";
+  if (m?.plafond === null) return "nuages non mesurés";
   const nuages = m?.nuages ?? [];
   if (!nuages.length) return "pas de nuage bas";
   const vv = nuages.find((n) => n.couverture === "VV");

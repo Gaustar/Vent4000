@@ -527,6 +527,7 @@ button { font: inherit; color: inherit; }
 /* ---------- Pied ---------- */
 .pied { max-width: var(--largeur); margin: 0 auto; padding: var(--sp-4) var(--sp-4) calc(var(--sp-6) + env(safe-area-inset-bottom)); text-align: center; border-top: 1px solid var(--bord); }
 .pied-liens { display: flex; justify-content: center; gap: var(--sp-5); }
+.pied-liens a { display: inline-flex; align-items: center; justify-content: center; min-height: var(--cible); min-width: var(--cible); }
 .pied-liens a { font-weight: 600; text-decoration: none; }
 .pied-note { margin: var(--sp-2) 0 0; font-size: var(--t-xs); color: var(--encre-3); }
 
@@ -543,6 +544,7 @@ button { font: inherit; color: inherit; }
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .reprise { margin: var(--sp-2) 0 0; font-size: var(--t-m); font-weight: 600; color: var(--encre-2); }
 .reprise.alerte { color: var(--ambre); }
+.reprise small { display: block; font-size: var(--t-s); font-weight: 400; color: var(--encre-2); }
 .salut { margin: var(--sp-4) 0 0; font-family: var(--titre); font-size: var(--t-l); font-weight: 600; letter-spacing: 0.02em; color: var(--encre-2); }
 
 .reponse {
@@ -664,6 +666,8 @@ button { font: inherit; color: inherit; }
   background: var(--surface-2); border: 1px solid var(--bord-fort); color: var(--encre); font-weight: 600;
 }
 .segment[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* Thème nuit : l'accent est clair, du blanc dessus ne fait que 2,5:1. */
+:root[data-theme="nuit"] .segment[aria-pressed="true"] { color: var(--fond); }
 .jours-choix { display: flex; flex-wrap: wrap; gap: 6px; }
 .jour-case { position: relative; }
 .jour-case input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }

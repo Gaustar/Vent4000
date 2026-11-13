@@ -41,7 +41,7 @@ test("tousMessages : découpe la réponse MET Norway sur « = »", () => {
 });
 
 test("lireConditions : un groupe ne renvoie que ce qu'il décrit (héritage TAF)", () => {
-  assert.deepEqual(Object.keys(lireConditions(["4000", "SHRA"])).sort(), ["brouillard", "orage", "precip", "temps", "visibilite"]);
+  assert.deepEqual(Object.keys(lireConditions(["4000", "SHRA"])).sort(), ["brouillard", "orage", "orageVoisin", "precip", "temps", "visibilite"]);
   assert.equal(lireConditions(["NSC"]).plafond, Infinity);
 });
 

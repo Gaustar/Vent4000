@@ -49,7 +49,7 @@ test("Ouverture tandem (5000 ft) au-dessus d'une couche légale -> limite, pas �
 });
 
 test("METAR sans groupe de rafale ni de temps présent = pas de rafale significative, pas de phénomène", () => {
-  const c = conditionsAero(parseMetar("EBCI 011220Z 24008KT 9999 FEW028 21/13 Q1024 NOSIG", NOW));
+  const c = conditionsAero(parseMetar("EBCI 011220Z 24008KT 9999 FEW040 21/13 Q1024 NOSIG", NOW));
   const r = evaluerSource(c, TANDEM);
   assert.equal(r.rafales.statut, "ok");
   assert.equal(r.orage.statut, "ok");
@@ -139,7 +139,8 @@ test("ventPiste : plein axe / perpendiculaire", () => {
 test("scoreCreneau : 2h vertes -> vert ; 2h non rouges -> orange ; sinon rouge", () => {
   assert.equal(scoreCreneau(["rouge", "vert", "vert", "rouge"]), "vert");
   assert.equal(scoreCreneau(["vert", "orange", "rouge"]), "orange");
-  assert.equal(scoreCreneau(["vert", "rouge", "vert"]), "rouge");
+  assert.equal(scoreCreneau(["vert", "rouge", "vert"]), "orange", "heures tenables isolées : fenêtre courte, pas rouge");
+  assert.equal(scoreCreneau(["rouge", "rouge"]), "rouge");
 });
 
 test("meilleurVerdict privilégie le meilleur créneau du jour", () => {
@@ -152,8 +153,9 @@ test("fenetreSautable : plus longue plage verte ; une heure isolée ne fait pas 
   const h = (heure, verdict) => ({ heure, verdict });
   assert.deepEqual(fenetreSautable([h(9, "vert"), h(10, "vert"), h(11, "rouge"), h(12, "vert"), h(13, "vert"), h(14, "vert")]),
     { verdict: "vert", debut: 12, fin: 15, duree: 3 });
-  assert.equal(fenetreSautable([h(18, "vert")]).verdict, "rouge");
-  assert.equal(fenetreSautable([h(9, "vert"), h(11, "vert")]).verdict, "rouge", "trou entre les heures");
+  assert.deepEqual(fenetreSautable([h(18, "vert")]), { verdict: "orange", debut: 18, fin: 19, duree: 1 }, "une seule heure : orange, fenêtre courte");
+  assert.equal(fenetreSautable([h(9, "vert"), h(11, "vert")]).verdict, "orange", "trou entre les heures");
+  assert.equal(fenetreSautable([h(9, "rouge"), h(10, "rouge")]).verdict, "rouge");
 });
 
 test("Source partielle : favorable mais sans toutes les données légales -> comptée à part", () => {
@@ -176,4 +178,51 @@ test("Une source en échec n'est jamais « partielle »", () => {
   const s = scoreHeure(heure({ icon_d2: calme({ rafales: 40, visibilite: null }), dmi_harmonie_arome_europe: calme() }), TANDEM, { maintenant: NOW });
   assert.deepEqual(s.accord, { favorables: 1, partielles: 0, total: 2 });
   assert.equal(s.sources.find((x) => x.id === "icon_d2").partielle, false);
+});
+
+test("prudence : donnée absente ou orage au voisinage ne donnent jamais vert", () => {
+  // Aucune source pour l'heure : rien n'est vérifié.
+  assert.equal(scoreHeure({ modeles: {} }, TANDEM, { maintenant: NOW }).verdict, "orange");
+  // METAR sans groupe de nuages lisible : plafond inconnu, pas « aucun plafond ».
+  assert.equal(parseMetar("EBCI 011250Z AUTO 24008KT 9999 OVC/// 12/10 Q1015", NOW).plafond, null);
+  assert.equal(evaluerSource(conditionsAero(parseMetar("EBCI 011250Z AUTO 24008KT 9999 OVC/// 12/10 Q1015", NOW)), TANDEM).plafond.statut, "inconnu");
+  assert.equal(parseMetar("EBCI 011250Z 24008KT 9999 NSC 12/10 Q1015", NOW).plafond, Infinity);
+  // Orage au voisinage (VCTS) : limite, donc jamais vert.
+  assert.equal(evaluerSource(conditionsAero(parseMetar("EBCI 011250Z 24008KT 9999 VCTS FEW030 12/10 Q1015", NOW)), TANDEM).orage.statut, "limite");
+});
+
+test("prudence : nuages épars sous 3000 ft, observation contre prévisions, couche basse sans hauteur", () => {
+  const metar = (corps) => parseMetar(`EBCI 011220Z ${corps} 21/13 Q1024`, NOW);
+  // « Base de nuages : minimum 3000 ft » : épars sous 3000 ft = limite ; au-dessus = ok ; ≥ 5/8 sous 3000 ft = échec.
+  assert.equal(evaluerSource(conditionsAero(metar("24008KT 9999 SCT010")), TANDEM).plafond.statut, "limite");
+  assert.equal(evaluerSource(conditionsAero(metar("24008KT 9999 SCT035")), TANDEM).plafond.statut, "ok");
+  assert.equal(evaluerSource(conditionsAero(metar("24008KT 9999 BKN010")), TANDEM).plafond.statut, "echec");
+  assert.equal(evaluerSource(conditionsModele(calme({ nuagesBas: 40, base: 300 }), true), TANDEM).plafond.statut, "limite");
+  assert.equal(evaluerSource(conditionsModele(calme({ nuagesBas: 40, base: 1500 }), true), TANDEM).plafond.statut, "ok");
+
+  // Observation de Charleroi bonne, tous les modèles mauvais pour Namur : jamais vert, et pas rouge contre le réel.
+  const bonne = metar("24008KT 9999 FEW040");
+  const mauvais = scoreHeure(heure(tousHR(() => calme({ vent: 40, rafales: 60 }))), TANDEM, { metar: bonne, maintenant: NOW });
+  assert.equal(mauvais.verdict, "orange");
+  // Observation bonne et modèles bons : vert, et l'accord compte toutes les sources.
+  const tout = scoreHeure(heure(tousHR(() => calme())), TANDEM, { metar: bonne, maintenant: NOW });
+  assert.equal(tout.verdict, "vert");
+  assert.equal(tout.accord.total, 6);
+  // Observation mauvaise : elle tranche seule.
+  assert.equal(scoreHeure(heure(tousHR(() => calme())), TANDEM, { metar: metar("24008G30KT 9999 FEW040"), maintenant: NOW }).verdict, "rouge");
+
+  // 4 modèles sur 5 annoncent une couche basse sans hauteur, le 5e ne voit pas de couche : pas vert.
+  const couche = scoreHeure(heure(tousHR((i) => calme({ nuagesBas: i < 4 ? 100 : 40 }))), TANDEM, { maintenant: NOW });
+  assert.equal(couche.verdict, "orange");
+  // La même couche, mesurée à 1500 m par un modèle qui calcule la base : vert.
+  const mesuree = scoreHeure(heure(tousHR((i) => calme(i < 3 ? { nuagesBas: 100 } : { nuagesBas: 100, base: 1500 }))), NIVEAUX_PRATIQUE.brevetA, { maintenant: NOW });
+  assert.equal(mesuree.verdict, "vert");
+});
+
+test("3000 ft pile est conforme : BKN030 et SCT030 ne sont ni un échec ni une limite", () => {
+  const m = (corps) => evaluerSource(conditionsAero(parseMetar(`EBCI 011220Z 24008KT 9999 ${corps} 21/13 Q1024`, NOW)), NIVEAUX_PRATIQUE.brevetA).plafond.statut;
+  assert.equal(m("BKN030"), "ok");
+  assert.equal(m("SCT030"), "ok");
+  assert.equal(m("BKN029"), "echec");
+  assert.equal(m("SCT029"), "limite");
 });

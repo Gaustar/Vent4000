@@ -56,10 +56,13 @@ export function conditionsModele(m, fournitBase = false) {
     plafond: null,
     plafondAuMoins: null,
     coucheBasse: null,
+    baseMin: null,
   };
   if (m.nuagesBas != null) {
     c.coucheBasse = m.nuagesBas >= COUCHE_PLAFOND;
     if (!c.coucheBasse) c.plafondAuMoins = 2000;
+    // Nuages épars (au moins 1/8) dont le modèle calcule la base : gardée pour la règle « base de nuages ».
+    if (!c.coucheBasse && fournitBase && m.base > 0 && m.nuagesBas >= 12.5) c.baseMin = m.base;
     else if (fournitBase && m.base != null && m.base > 0) c.plafond = m.base;
   }
   return c;
@@ -101,6 +104,13 @@ export function evaluerSource(c, seuils) {
     set("plafond", "inconnu", "—");
   }
 
+  // Les textes disent « base de nuages : minimum 3000 ft », sans seuil de couverture. Une couche
+  // ≥ 5/8 sous 3000 ft est un échec ; des nuages épars sous 3000 ft ne peuvent pas donner un feu
+  // vert : « limite », à juger sur place.
+  if (res.plafond.statut === "ok" && c.baseMin != null && c.baseMin < LEGAL_BE.plafondMinAGL) {
+    set("plafond", "limite", `nuages épars à ${km(c.baseMin)}, sous 3000 ft`);
+  }
+
   // Ouverture : seulement si le niveau ouvre au-dessus du plancher légal
   // (tandem 5000 ft, AFF ~1500 m). Une couche entre le plancher et
   // l'altitude d'ouverture oblige à ouvrir au-dessus d'elle.
@@ -120,6 +130,7 @@ export function evaluerSource(c, seuils) {
 
   // Orage / cumulonimbus.
   if (c.orage) set("orage", "echec", "orage");
+  else if (c.orageVoisin) set("orage", "limite", "orage au voisinage");
   else if (c.cb) set("orage", "limite", c.convectif === "TCU" ? "cumulus bourgeonnant (TCU)" : "cumulonimbus");
   else if (c.orage === false) set("orage", "ok", "non");
   else set("orage", "inconnu", "—");
@@ -142,11 +153,13 @@ export function conditionsAero(cond) {
     plafond: cond.plafond !== undefined ? cond.plafond : null,
     plafondAuMoins: null,
     coucheBasse: null,
+    baseMin: cond.nuages?.length ? Math.min(...cond.nuages.map((n) => n.baseM)) : null,
     visibilite: cond.visibilite ?? null,
     // Dans un METAR ou un TAF, l'absence de groupe de temps présent
     // signifie « aucun phénomène significatif » (groupes TAF fusionnés
     // avec la base, cf. conditionsTaf).
     orage: !!cond.orage,
+    orageVoisin: !!cond.orageVoisin,
     precip: !!cond.precip,
     cb: !!cond.cb,
     convectif: cond.convectif ?? (cond.cb ? "CB" : null),

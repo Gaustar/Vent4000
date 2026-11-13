@@ -4,6 +4,39 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [2.9.0] — 2026-11-13
+
+Revue complète de l'app (relecture + juge indépendant). Toutes les corrections
+vont dans le même sens : jamais de feu vert sans preuve.
+
+### Modifié — verdict
+- **Nuages épars sous 3000 ft** : les textes disent « base de nuages : minimum
+  3000 ft », sans seuil de couverture. Une couche ≥ 5/8 sous 3000 ft reste un
+  échec ; des nuages épars (FEW/SCT) sous 3000 ft donnent maintenant « orange ».
+- **Observation de Charleroi** : mauvaise, elle tranche seule ; bonne, elle vote
+  avec les prévisions au lieu de les effacer. Prévisions en échec et observation
+  conforme : orange.
+- **Couche basse sans hauteur** : si la majorité des modèles annonce une couche
+  basse ≥ 5/8 et qu'aucune source n'en mesure la hauteur, orange.
+- **Une seule heure tenable** (fin de journée, éclaircie) : orange « fenêtre
+  courte » au lieu de « ça ne saute pas ».
+
+### Corrigé
+- METAR sans groupe de nuages lisible (« OVC/// ») : plafond inconnu, et non
+  plus « pas de plafond ».
+- Orage au voisinage (VCTS) : orange.
+- Heure sans aucune source : orange, jamais vert.
+- Hors ligne avec des données de la veille : les jours passés sont ignorés et
+  l'âge des prévisions s'affiche dans la carte du verdict et la vue Jour.
+- Thème nuit : bouton sélectionné illisible (blanc sur bleu clair).
+- Liens du pied de page trop petits pour le doigt.
+
+### Ajouté
+- « Indication seulement : la décision appartient au club » sous le verdict.
+- Politique de sécurité de la page (CSP) : seuls les serveurs de données de
+  l'app peuvent être joints.
+- Base des nuages des modèles : vérifié qu'elle est comptée depuis le sol.
+
 ## [2.8.1] — 2026-11-13
 
 ### Modifié

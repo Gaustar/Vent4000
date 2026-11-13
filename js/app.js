@@ -111,6 +111,15 @@ const vv = (kmh) => {
   return v == null ? "—" : String(v);
 };
 
+/** Jours d'ici une date : d'après le calendrier, pas d'après le rang dans des données peut-être vieilles. */
+const joursDici = (date) => Math.round((date - dateLocale(todayIso())) / 86400000);
+
+/** Avertissement court si les prévisions affichées sont vieilles, sinon "". */
+function alertePerime() {
+  const ageMin = etat.meteo?.recupereLe ? (Date.now() - new Date(etat.meteo.recupereLe).getTime()) / 60000 : 0;
+  return ageMin > AGE_PERIME_MIN ? `prévisions vieilles de ${Math.round(ageMin / 60)} h` : "";
+}
+
 function echapper(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -237,6 +246,8 @@ function calculerJoursOuverts(seuils) {
     const date = dateLocale(jour.date);
     const ouverture = ouvertureReelle(date, etat.club);
     if (!ouverture) return;
+    // Hors ligne avec des données de la veille : un jour passé n'est plus un jour à venir.
+    if (jour.date < aujourdhui) return;
 
     const estAujourdhui = jour.date === aujourdhui;
     const coucher = heureDecimale(jour.sunset);
@@ -789,7 +800,8 @@ function rendreReponse(jours) {
     <span class="rep-jour"><span aria-hidden="true">${VERDICT_SYMBOLE[choix.verdictJour]}</span> ${JOURS_FR[choix.date.getDay()]} ${choix.date.getDate()} ${MOIS_FR[choix.date.getMonth()]}</span>
     <span class="rep-verdict"><strong>${VERDICT_TEXTE[choix.verdictJour]}</strong>${fenetre ? ` <span class="mono">${fenetre}</span>` : ""}</span>
     <span class="rep-meta">
-      <span>${echeanceEnClair(choix.index)}</span>
+      <span>${echeanceEnClair(joursDici(choix.date))}</span>
+      ${alertePerime() ? `<span class="obs-alerte">⚠️ ${alertePerime()}</span>` : ""}
       <span>${confianceEnClair(choix)}</span>
       ${choix.ouverture.source === "club" ? `<span>jour confirmé par le club</span>` : ""}
       ${choix.accordFenetre ? `<span class="technique"><b class="mono">${texteAccord(choix.accordFenetre)}</b> sources ${textePartielles(choix.accordFenetre)}</span>` : ""}
@@ -988,7 +1000,7 @@ function rendreJour() {
   const texteOuverture = o.source === "club"
     ? `Ouverture confirmée par le club${o.start ? `, début prévu à ${o.start}` : ""}${o.pointMeteo ? ` · point météo à ${o.pointMeteo}` : ""}`
     : o.type === "vendredi" ? "Le club ouvre à 16h" : "Le club ouvre à 8h30";
-  $("#jour-soustitre").textContent = `${texteOuverture} · sauts du lever au coucher du soleil (${jour.sunrise ? heureMinutes(heureDecimale(jour.sunrise)) : "—"} – ${heureMinutes(heureDecimale(jour.sunset))}) · ${echeanceEnClair(info.index)}`;
+  $("#jour-soustitre").textContent = `${texteOuverture} · sauts du lever au coucher du soleil (${jour.sunrise ? heureMinutes(heureDecimale(jour.sunrise)) : "—"} – ${heureMinutes(heureDecimale(jour.sunset))}) · ${echeanceEnClair(joursDici(info.date))}${alertePerime() ? ` · ⚠️ ${alertePerime()}` : ""}`;
 
   $("#jour-verdict").className = `hero ${info.verdictJour}`;
   $("#jour-verdict-texte").innerHTML =
@@ -1293,7 +1305,10 @@ function rendreReprise() {
   const texte = r ? `${r.texte} ${r.suite}`.trim() : "";
   $("#reprise").hidden = !r;
   $("#reprise").classList.toggle("alerte", !!r?.alerte);
-  $("#reprise").textContent = texte;
+  // Sur l'accueil : ce qu'il faut repasser en tête, l'échéance suivante en retrait dessous.
+  const suite = document.createElement("small");
+  suite.textContent = r?.suite ?? "";
+  $("#reprise").replaceChildren(r?.texte ?? "", suite);
   $("#reglage-reprise").textContent = r ? `${texte} Source : tableau « Absence / Expérience » du Paraclub.`
     : etat.reglages.niveau === "tandem" ? "" : "Indique la date de ton dernier saut : l'app te dira ce que le club te demande de repasser.";
 }

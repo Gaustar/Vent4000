@@ -254,11 +254,14 @@ Le RSB §3.1 est sans ambiguïté sur sa portée :
 
 | Niveau | Vent max | Ouverture | Plafond min | Source |
 |---|---|---|---|---|
-| Tandem | 28 km/h | 1500 m | 1800 m | Club/matériel — hors barème §3.4.2 |
-| Élève AFF | **25 km/h** | 1500 m | 1800 m | **RSB §3.4.2 — 7 m/s** |
-| Brevet A | **25 km/h** | 1200 m | 1500 m | **RSB §3.4.2 — 7 m/s** |
-| Brevet B | **25 km/h** | 914 m | 1214 m | **RSB §3.4.2 — 7 m/s** (lecture conservatrice, voir ci-dessous) |
-| Brevet C/D | 46 km/h | 914 m | 1214 m | **RSB §3.4.2 — 12,86 m/s = 25 kts** |
+| Tandem | 25 km/h | 1524 m | 914 m | RSB §3.4.2 — 7 m/s ; ouverture RSB §6.4.1 (5000 ft) |
+| Élève AFF | 25 km/h | 1500 m | 914 m | RSB §3.4.2 — 7 m/s ; ouverture : site du club |
+| Brevet A | 25 km/h | 914 m | 914 m | RSB §3.4.2 — 7 m/s ; RSB §3.5 (3000 ft) |
+| Brevet B | 25 km/h | 914 m | 914 m | RSB §3.4.2 — 7 m/s (lecture conservatrice, voir ci-dessous) |
+| Brevet C/D | 46 km/h | 914 m | 914 m | RSB §3.4.2 — 12,86 m/s = 25 kts |
+
+Le plafond minimum est le plancher légal, identique pour tous (GDF-05 §6 b, RSB §3.4.1), sans marge ajoutée.
+Valeurs appliquées : `js/config.js` (`NIVEAUX_PRATIQUE`, `LEGAL_BE`).
 
 #### L'ambiguïté du brevet B, levée par la fédération flamande
 
