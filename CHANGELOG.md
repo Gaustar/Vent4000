@@ -4,6 +4,13 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [2.8.1] — 2026-11-13
+
+### Modifié
+- **Reprise après une absence** : la ligne reste affichée sur l'accueil même
+  quand il n'y a rien à repasser, et annonce la prochaine échéance — la date,
+  le nombre de jours restants et ce qu'il faudra alors repasser.
+
 ## [2.8.0] — 2026-11-13
 
 ### Ajouté

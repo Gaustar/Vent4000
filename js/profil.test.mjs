@@ -72,10 +72,18 @@ test("reprise : tableau Absence / Expérience du Paraclub", async () => {
   assert.equal(reprise({ niveau: "tandem", dernierSaut: "2020-01-01" }, jour), null);
   assert.equal(r({ sauts: 10, dernierSaut: "2026-09-14" }).alerte, false);          // 1 mois et 30 jours
   assert.match(r({ sauts: 10, dernierSaut: "2026-09-13" }).texte, /à repasser : AFF 7\.$/);
+  // Prochaines échéances
+  assert.match(r({ sauts: 10, dernierSaut: "2026-10-20" }).suite, /^À partir du 20 décembre 2026 \(dans 37 jours\) : AFF 7\.$/);
+  assert.match(r({ sauts: 10, dernierSaut: "2026-09-13" }).suite, /13 décembre 2026 \(dans 30 jours\) : Théorie \+ AFF 7/);
+  assert.match(r({ sauts: 60, dernierSaut: "2026-10-20" }).suite, /20 janvier 2027 .* : Solo\.$/);   // « - » à 2 mois : on saute à 3 mois
+  assert.equal(r({ sauts: 10, dernierSaut: "2026-03-01" }).suite, "");                               // 6 mois = 1 an : plus rien ne change
+  assert.match(r({ sauts: 10, dernierSaut: "2026-08-31" }).suite, /1 décembre 2026/);                // 31 + 3 mois : pas de 31 novembre
+  assert.equal(r({ sauts: 100, dernierSaut: "2026-10-20" }).suite, "");
   assert.match(r({ sauts: 24, dernierSaut: "2026-05-13" }).texte, /Théorie \+ AFF 4 \+ AFF 7/);
   assert.equal(r({ sauts: 25, dernierSaut: "2026-09-01" }).alerte, false);          // « - » dans le tableau
   assert.match(r({ sauts: 99, dernierSaut: "2026-05-01" }).texte, /Solo \+ 1 saut CSC/);
-  assert.match(r({ sauts: 99, dernierSaut: "2025-01-01" }).texte, /Théorie \+ AFF 7 \+ Solo\. Au-delà d'un an/);
+  assert.match(r({ sauts: 99, dernierSaut: "2025-01-01" }).texte, /Théorie \+ AFF 7 \+ Solo\.$/);
+  assert.match(r({ sauts: 99, dernierSaut: "2025-01-01" }).suite, /Au-delà d'un an/);
   assert.match(r({ sauts: 100, dernierSaut: "2026-05-01" }).texte, /demande au club/);
   assert.match(r({ sauts: null, dernierSaut: "2026-05-01" }).texte, /nombre de sauts/);
   assert.match(reprise({ niveau: "aff", aff: "5-solo", dernierSaut: "2026-08-01" }, jour).texte, /à partir du niveau 4/);

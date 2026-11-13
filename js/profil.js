@@ -132,6 +132,8 @@ export const REPRISE = {
   "<100":      { 2: null, 3: "Solo", 6: "Solo + 1 saut CSC", 12: "Théorie + AFF 7 + Solo" },
 };
 
+const COLONNES_REPRISE = [2, 3, 6, 12];   // mois d'absence
+
 /** Mois entiers écoulés entre "AAAA-MM-JJ" et aujourd'hui. */
 export function moisDepuis(dernierSaut, aujourdhui = new Date()) {
   const [a, m, j] = dernierSaut.split("-").map(Number);
@@ -140,32 +142,40 @@ export function moisDepuis(dernierSaut, aujourdhui = new Date()) {
 
 /**
  * Ce que le membre doit repasser d'après le tableau du club.
- * @returns {{texte: string, alerte: boolean}|null} null = pas concerné ou date inconnue ;
- *   alerte = quelque chose à repasser (ou à demander au club).
+ * @returns {{texte: string, alerte: boolean, suite: string}|null} null = pas concerné ou date
+ *   inconnue ; alerte = quelque chose à repasser (ou à demander au club) ; suite = prochaine échéance.
  */
 export function reprise(profil, aujourdhui = new Date()) {
   if (!profil?.dernierSaut || profil.niveau === "tandem") return null;
   const mois = moisDepuis(profil.dernierSaut, aujourdhui);
-  const colonne = [12, 6, 3, 2].find((c) => mois >= c);
-  if (!colonne) return { texte: "Dernier saut il y a moins de 2 mois : le tableau du club ne demande rien.", alerte: false };
+  const colonne = COLONNES_REPRISE.findLast((c) => mois >= c);
+  const depuis = colonne ? `Dernier saut il y a ${mois} mois` : "Dernier saut il y a moins de 2 mois";
+  const rien = { texte: `${depuis} : rien à repasser d'après le tableau du club.`, alerte: false, suite: "" };
 
-  const depuis = `Dernier saut il y a ${mois} mois`;
-  let ligne;
+  let ligne, manque;
   if (profil.niveau === "aff") {
-    if (!profil.aff) return { texte: `${depuis} : indique ton niveau AFF pour savoir quoi repasser.`, alerte: true };
-    ligne = `aff${profil.aff}`;
-  } else if (profil.sauts == null) {
-    return { texte: `${depuis} : indique ton nombre de sauts pour savoir quoi repasser.`, alerte: true };
-  } else if (profil.sauts < 25) ligne = "<25";
+    if (profil.aff) ligne = `aff${profil.aff}`;
+    else manque = "indique ton niveau AFF pour savoir quoi repasser.";
+  } else if (profil.sauts == null) manque = "indique ton nombre de sauts pour savoir quoi repasser.";
+  else if (profil.sauts < 25) ligne = "<25";
   else if (profil.sauts < 100) ligne = "<100";
-  else return { texte: `${depuis} : à partir de 100 sauts, cette partie du tableau du club n'est pas dans l'app — demande au club.`, alerte: true };
+  else manque = "à partir de 100 sauts, cette partie du tableau du club n'est pas dans l'app — demande au club.";
+  if (!ligne) return colonne ? { texte: `${depuis} : ${manque}`, alerte: true, suite: "" } : rien;
 
-  const quoi = REPRISE[ligne][colonne];
-  if (!quoi) return { texte: `${depuis} : le tableau du club ne demande rien.`, alerte: false };
-  return {
-    texte: `${depuis} — à repasser : ${quoi}.${mois > 12 ? " Au-delà d'un an, le tableau du club continue : vérifie avec le club." : ""}`,
-    alerte: true,
-  };
+  const quoi = colonne ? REPRISE[ligne][colonne] : null;
+  // Prochaine échéance : la première colonne suivante qui demande autre chose.
+  const suivante = COLONNES_REPRISE.find((c) => c > (colonne ?? 0) && REPRISE[ligne][c] && REPRISE[ligne][c] !== quoi);
+  let suite = "";
+  if (suivante) {
+    const [a, m, j] = profil.dernierSaut.split("-").map(Number);
+    let date = new Date(a, m - 1 + suivante, j);
+    // Le 31 dans un mois de 30 jours : l'échéance tombe le 1er du mois suivant, comme moisDepuis.
+    if (date.getDate() !== j) date = new Date(a, m + suivante, 1);
+    const jours = Math.round((date - new Date(aujourdhui.getFullYear(), aujourdhui.getMonth(), aujourdhui.getDate())) / 86400000);
+    suite = `À partir du ${date.toLocaleDateString("fr-BE", { day: "numeric", month: "long", year: "numeric" })} (dans ${jours} jour${jours > 1 ? "s" : ""}) : ${REPRISE[ligne][suivante]}.`;
+  } else if (mois > 12) suite = "Au-delà d'un an, le tableau du club continue : vérifie avec le club.";
+
+  return quoi ? { texte: `${depuis} — à repasser : ${quoi}.`, alerte: true, suite } : { ...rien, suite };
 }
 
 /** Valeur de vent (km/h) dans l'unité choisie, arrondie. */

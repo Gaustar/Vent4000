@@ -1290,9 +1290,11 @@ function rendreReglages() {
 /** Ce qu'il faut repasser après une absence (tableau du Paraclub) : accueil + réglages. */
 function rendreReprise() {
   const r = reprise(etat.reglages);
-  $("#reprise").hidden = !r?.alerte;
-  $("#reprise").textContent = r?.alerte ? r.texte : "";
-  $("#reglage-reprise").textContent = r ? `${r.texte} Source : tableau « Absence / Expérience » du Paraclub.`
+  const texte = r ? `${r.texte} ${r.suite}`.trim() : "";
+  $("#reprise").hidden = !r;
+  $("#reprise").classList.toggle("alerte", !!r?.alerte);
+  $("#reprise").textContent = texte;
+  $("#reglage-reprise").textContent = r ? `${texte} Source : tableau « Absence / Expérience » du Paraclub.`
     : etat.reglages.niveau === "tandem" ? "" : "Indique la date de ton dernier saut : l'app te dira ce que le club te demande de repasser.";
 }
 

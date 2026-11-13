@@ -541,7 +541,8 @@ button { font: inherit; color: inherit; }
    v2.5 — Accueil « la réponse d'abord »
    ============================================================ */
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-.reprise { margin: var(--sp-2) 0 0; font-size: var(--t-m); font-weight: 600; color: var(--ambre); }
+.reprise { margin: var(--sp-2) 0 0; font-size: var(--t-m); font-weight: 600; color: var(--encre-2); }
+.reprise.alerte { color: var(--ambre); }
 .salut { margin: var(--sp-4) 0 0; font-family: var(--titre); font-size: var(--t-l); font-weight: 600; letter-spacing: 0.02em; color: var(--encre-2); }
 
 .reponse {
