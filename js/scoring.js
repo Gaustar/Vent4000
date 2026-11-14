@@ -122,9 +122,11 @@ export function scoreHeure(h, seuils, aero = {}) {
     if (avis.length) {
       const enEchec = avis.filter((x) => x.res.statut !== "ok");
       const ex = enEchec[0] ?? avis[0];
-      decision.detail = decision.statut === "ok"
+      decision.detail = decision.statut === "ok" || !enEchec.length
         ? `${avis.length}/${avis.length} sources conformes`
-        : `${decision.echecs}/${decision.total} sources en échec — ${ex.s.nom} : ${ex.res.detail}`;
+        : decision.echecs
+          ? `${decision.echecs}/${decision.total} sources en échec — ${ex.s.nom} : ${ex.res.detail}`
+          : `${ex.s.nom} : ${ex.res.detail}`;   // aucune source en échec : on nomme celle qui fait douter
       if (varEchec.length) decision.detail += ` · TAF : ${varEchec.map((v) => v.libelle).join(" ; ")}`;
     }
     // Prévisions en échec mais observation conforme : ni rouge contre le réel, ni vert contre les prévisions.

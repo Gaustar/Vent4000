@@ -4,6 +4,25 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [2.9.1] — 2026-11-14
+
+Tour complet de l'app sur téléphone : lisibilité, aucune règle ni aucun seuil modifié.
+
+### Modifié
+- Radar : s'ouvre à 5 km (bouton en premier), et de lui-même quand un avion est en vue.
+- Radar : la trace des 20 dernières minutes est gardée entre deux ouvertures de l'app.
+- Club : « Ouverture prévue aujourd'hui » au lieu de « Prochain jour » le matin d'un jour d'ouverture.
+- Vue Jour : une même raison n'apparaît plus deux fois ; quand aucune source n'est en échec,
+  on nomme celle qui fait douter au lieu d'écrire « 0/5 sources en échec ».
+- Conseil de déplacement : « pari ouvert » en langage courant.
+- Accueil : les barres horaires de tous les jours commencent et finissent à la même heure.
+
+### Corrigé
+- Tableau des sources : toutes les colonnes tiennent à l'écran d'un téléphone.
+- Légende du tableau, références réglementaires coupées, espaces avant les unités,
+  police des listes déroulantes, étiquette d'altitude du radar.
+- Le niveau n'est plus affiché dans l'en-tête avant d'avoir été choisi.
+
 ## [2.9.0] — 2026-11-13
 
 Revue complète de l'app (relecture + juge indépendant). Toutes les corrections

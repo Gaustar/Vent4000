@@ -517,7 +517,7 @@ button { font: inherit; color: inherit; }
   background: var(--surface-2); color: var(--encre); border: 1px solid var(--bord-fort);
 }
 .champ-borne { font-size: var(--t-xs); color: var(--encre-3); }
-.champ input[type="text"] { font-family: inherit; }
+.champ input[type="text"], .champ input[type="date"], .champ select { font-family: inherit; }
 .choix-niveau-boutons { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .choix-niveau-boutons .btn { margin: 0; }
 .legal-texte { margin: 0 0 var(--sp-3); font-size: var(--t-s); color: var(--encre-2); }
@@ -715,3 +715,10 @@ body:not(.expert) .technique { display: none !important; }
 .heure-raison { display: block; font-size: var(--t-xs); }
 .heure.rouge .heure-raison { color: var(--rouge); }
 .heure.orange .heure-raison { color: var(--ambre); }
+
+/* v2.9.1 — finitions de mise en page */
+.sources th, .sources td { padding: 6px 4px; }
+.sources tbody th { white-space: normal; }                       /* le nom du modèle passe à la ligne : toutes les colonnes tiennent à l'écran */
+.f-tag { display: inline-block; max-width: 100%; }               /* la référence réglementaire reste d'un bloc */
+.resume-regles strong, .piste-infos .ligne strong { word-spacing: -0.3em; }   /* espace de la police à chasse fixe avant l'unité */
+.r-etiq { stroke-width: 5px; font-weight: 600; }                 /* lisible par-dessus les chiffres des cercles */

@@ -34,7 +34,7 @@ const etat = {
   carburant: null,
   club: null,               // page météo publique du club, via le relais (club.js)
   avion: null,              // avion(s) de largage près du terrain, via le relais (avion.js)
-  traces: new Map(),        // hex → positions reçues depuis l'ouverture de l'app
+  traces: lireTraces(),     // hex → positions reçues (20 dernières minutes, gardées entre deux ouvertures)
   moi: null,                // position du téléphone (« Me situer ») : jamais envoyée
   moiErreur: null,
 };
@@ -327,7 +327,7 @@ function motifDominant(heuresScorees, verdict) {
     if (score.verdict !== verdict) continue;
     for (const regle of score.regles) {
       if (regle.statut === "ok") continue;
-      const cle = `${regle.id}|${regle.statut}`;
+      const cle = `${regle.id}|${regle.statut === "violee"}`;   // même phrase affichée : une seule ligne
       const c = compte.get(cle) ?? { regle, n: 0 };
       c.n += 1;
       compte.set(cle, c);
@@ -434,7 +434,7 @@ function rendreClub(el) {
     <div class="mt-corps">
       <p class="mt-valeur club-etat club-ton-${ton}"><span class="mt-point club-ton-${ton}" aria-hidden="true"></span>${echapper(c.etat.libelle)}</p>
       ${c.etat.message.map((p) => `<p class="mt-detail">${echapper(p)}</p>`).join("")}
-      ${prochain ? `<p class="mt-detail">Prochain jour : <b>${echapper(prochain.jour.toLowerCase())} ${dateCourte(prochain.date)}</b>
+      ${prochain ? `<p class="mt-detail">${prochain.date === todayIso() ? "<b>Ouverture prévue aujourd'hui</b>" : `Prochain jour : <b>${echapper(prochain.jour.toLowerCase())} ${dateCourte(prochain.date)}</b>`}
         · point météo ${prochain.pointMeteo ? `<b>${echapper(prochain.pointMeteo)}</b>` : "pas encore annoncé"}
         ${prochain.start ? `· début prévu à <b>${echapper(prochain.start)}</b>` : ""}</p>` : ""}
       ${c.maj ? `<p class="mt-detail mt-discret">Mis à jour par le club : ${echapper(c.maj)}</p>` : ""}
@@ -479,8 +479,8 @@ const TRACE_MAX_MS = 20 * 60000;
 const CLE_DERNIER_VU = "vent4000.avion";
 const DERNIER_VU_MAX_MS = 2 * 3600e3;
 let minuteurAvion = null;
-let radarOuvert = false;
-let radarKm = RAYON_KM;   // échelle du radar : toute la zone (20 km) ou zoom sur le terrain (5 km)
+let radarOuvert = null;   // null : pas encore touché, le radar s'ouvre de lui-même quand un avion est en vue
+let radarKm = 5;          // échelle du radar : zoom sur le terrain (5 km) ou toute la zone (20 km)
 
 /** Dernière position reçue de l'avion du club : affichée quand il disparaît (au sol, sous la couverture). */
 function lireDernierVu() {
@@ -513,6 +513,11 @@ function majTraces(avions, quand) {
   for (const [hex, t] of etat.traces) {
     if (!t.length || quand - t.at(-1).t > TRACE_MAX_MS) etat.traces.delete(hex);
   }
+  try { localStorage.setItem("vent4000.traces", JSON.stringify([...etat.traces])); } catch { /* stockage indisponible */ }
+}
+
+function lireTraces() {
+  try { return new Map(JSON.parse(localStorage.getItem("vent4000.traces") || "[]")); } catch { return new Map(); }
 }
 
 async function chargerAvion() {
@@ -608,7 +613,7 @@ function rendreAvion(el) {
   } else {
     const phase = phaseVol(a);
     const nom = a.club ? `${a.immat}` : `${a.type ?? "Avion"} ${a.immat ?? ""}`;
-    valeur = `${a.club ? "L'avion du club vole" : `Avion ${echapper(nom.trim())}`} · ${a.auSol ? "au sol" : `<b class="mono">${a.altitudeM != null ? a.altitudeM.toLocaleString("fr-BE") : "—"} m</b>`}${phase && !a.auSol ? ` · ${phase}` : ""}`;
+    valeur = `${a.club ? "L'avion du club vole" : `Avion ${echapper(nom.trim())}`} · ${a.auSol ? "au sol" : `<b class="mono">${a.altitudeM != null ? a.altitudeM.toLocaleString("fr-BE") : "—"}</b> m`}${phase && !a.auSol ? ` · ${phase}` : ""}`;
     const age = a.ageS != null ? Math.round(a.ageS + (Date.now() - new Date(d.recu).getTime()) / 1000) : null;
     detail = `<p class="mt-detail">${a.distanceKm.toLocaleString("fr-BE")} km ${versCardinal(a.relevement)} du terrain
         ${a.vitesseKmh != null ? `· ${vv(a.vitesseKmh)} ${uniteVent()}` : ""}
@@ -616,16 +621,17 @@ function rendreAvion(el) {
       <p class="mt-detail mt-discret technique">${a.altitudeFt != null && !a.auSol ? `${a.altitudeFt.toLocaleString("fr-BE")} ft · ` : ""}${age != null ? `signal il y a ${age} s` : ""}</p>
       ${a.club ? "" : `<p class="mt-detail mt-discret">Avion de parachutage près du terrain, mais pas celui du club.</p>`}`;
   }
+  const ouvert = radarOuvert ?? Boolean(a);
   el.innerHTML = `
     <span class="mt-label">Avion</span>
     <div class="mt-corps">
       <p class="mt-valeur">${valeur}</p>
       ${detail}
       ${texteDepuisMoi(a)}
-      <details class="radar-cadre"${radarOuvert ? " open" : ""}>
+      <details class="radar-cadre"${ouvert ? " open" : ""}>
         <summary>Voir sur le radar</summary>
         <div class="choix-segment radar-zoom" role="group" aria-label="Échelle du radar">
-          ${[RAYON_KM, 5].map((km) => `<button type="button" class="segment" data-radar-km="${km}" aria-pressed="${radarKm === km}">${km} km</button>`).join("")}
+          ${[5, RAYON_KM].map((km) => `<button type="button" class="segment" data-radar-km="${km}" aria-pressed="${radarKm === km}">${km} km</button>`).join("")}
         </div>
         ${svgRadar(d?.avions ?? [])}
         <p class="mt-detail mt-discret">${ORTHO_ATTRIBUTION}.</p>
@@ -636,7 +642,7 @@ function rendreAvion(el) {
       <div class="actions"><button type="button" class="btn secondaire" data-action="me-situer" aria-pressed="${etat.reglages.maPosition}">${etat.reglages.maPosition ? "Ne plus me situer" : "Me situer"}</button></div>
     </div>
     <span class="mt-age">${d?.recu ? ilYa(new Date(d.recu).getTime()) : ""}</span>`;
-  el.querySelector(".radar-cadre").addEventListener("toggle", (e) => { radarOuvert = e.target.open; });
+  el.querySelector(".radar-cadre").addEventListener("toggle", (e) => { if (e.target.open !== ouvert) radarOuvert = e.target.open; });   // seul un geste de l'utilisateur compte
   el.querySelectorAll("[data-radar-km]").forEach((b) => b.addEventListener("click", () => {
     radarKm = Number(b.dataset.radarKm);
     rendreAvion(el);
@@ -837,6 +843,9 @@ function rendreSemaine() {
       </div>`;
   }
 
+  const plageHeures = (de, a) => Array.from({ length: Math.max(0, a - de) }, (_, i) => de + i);
+  const bornes = jours.flatMap((j) => j.heures.map(({ h }) => h.heure));
+  const [debutBande, finBande] = [Math.min(...bornes), Math.max(...bornes)];
   for (const j of jours) {
     const carte = document.createElement("button");
     carte.className = `carte-jour ${j.verdictJour}${j.precision === "regional" ? " lointain" : ""}${j.dispo ? "" : " hors-dispo"}`;
@@ -846,6 +855,9 @@ function rendreSemaine() {
       return `<span class="bande-h ${score.verdict}" title="${h.heure}h · ${VERDICT_TEXTE[score.verdict]} · ${texteAccord(score.accord)} sources favorables ${textePartielles(score.accord)}">
         <i style="height:${hauteur}%"></i><em>${h.heure % 2 === 0 ? h.heure : ""}</em></span>`;
     }).join("");
+    const vide = (h) => `<span class="bande-h"><i style="height:0"></i><em>${h % 2 === 0 ? h : ""}</em></span>`;
+    const [debut, fin] = [j.heures[0]?.h.heure ?? debutBande, j.heures.at(-1)?.h.heure ?? finBande];
+    const bandeAlignee = plageHeures(debutBande, debut).map(vide).join("") + bande + plageHeures(fin + 1, finBande + 1).map(vide).join("");
     const etiquettes = [
       j.dispo ? "" : `<span class="etiq-jour">Pas dans mes jours</span>`,
       j.ouverture.type === "ferie" ? `<span class="etiq-jour">Férié</span>` : "",
@@ -863,7 +875,7 @@ function rendreSemaine() {
         <span class="cj-accord technique">${j.accordFenetre ? `<b>${texteAccord(j.accordFenetre)}</b>` : ""}</span>
       </span>
       ${etiquettes.trim() || j.motif ? `<span class="cj-infos">${etiquettes}${j.motif ? `<span class="cj-motif" title="${echapper(j.motif.technique)}">${echapper(j.motif.clair)}</span>` : ""}</span>` : ""}
-      ${j.dispo ? `<span class="bande" aria-hidden="true">${bande}</span>` : ""}`;
+      ${j.dispo ? `<span class="bande" aria-hidden="true">${bandeAlignee}</span>` : ""}`;
     carte.setAttribute("aria-label",
       `${JOURS_FR[j.date.getDay()]} ${j.date.getDate()} — ${VERDICT_TEXTE[j.verdictJour]}` +
       `${fenetre ? `, ${fenetre}` : ""}${j.accordFenetre ? `, ${texteAccord(j.accordFenetre)} sources favorables ${textePartielles(j.accordFenetre)}` : ""}` +
@@ -946,7 +958,7 @@ function rendrePourquoi(el, info) {
   for (const { score } of info.heures) {
     for (const regle of score.regles) {
       if (regle.statut === "ok") continue;
-      const cle = `${regle.id}|${regle.statut}`;
+      const cle = `${regle.id}|${regle.statut === "violee"}`;   // même phrase affichée : une seule ligne
       const c = compte.get(cle) ?? { id: regle.id, label: regle.label, statut: regle.statut, source: regle.source, heures: 0 };
       c.heures += 1;
       compte.set(cle, c);
@@ -1226,7 +1238,7 @@ function rendrePiste(score) {
   rendreBoussole(dir, vent);
   const vp = ventPiste(vent, dir);
   $("#crosswind").innerHTML = `
-    <div class="ligne"><span>Vent (${echapper(s?.nom ?? "—")})</span><strong>${cardinal(dir)} ${r(dir)}° · ${vv(vent)} ${uniteVent()}</strong></div>
+    <div class="ligne"><span>Vent (${echapper(s?.nom ?? "—")})</span><strong>${cardinal(dir)} ${r(dir)}°, ${vv(vent)} ${uniteVent()}</strong></div>
     <div class="ligne"><span>Traversier</span><strong>${vv(vp.traversier)} ${uniteVent()}</strong></div>
     <div class="ligne"><span>De face</span><strong>${vv(vp.face)} ${uniteVent()}</strong></div>
     <span class="note">Axe piste ${String(DZ.qfu).padStart(3, "0")}° / ${DZ.qfu + 180}°. Sous voile, on pose face à la manche à air.</span>`;
@@ -1443,6 +1455,7 @@ function basculerVue(nom) {
   for (const v of ["bienvenue", "semaine", "jour", "reglages"]) {
     $(`#vue-${v}`).hidden = v !== nom;
   }
+  $("#btn-niveau").hidden = nom === "bienvenue";
   window.scrollTo({ top: 0 });
   planifierAvion();
 }

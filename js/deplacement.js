@@ -101,12 +101,12 @@ export function conseilDeplacement({ verdict, duree = 0, confiance = "unique", e
     }
     const fragilite = !fenetreConfortable
       ? `fenêtre courte (${duree} h)`
-      : !confianceSolide ? "modèles peu d'accord" : "conditions justes";
+      : !confianceSolide ? "les prévisions ne sont pas d'accord entre elles" : "conditions justes";
     return {
       niveau: "reconfirmer",
       titre: "Pari ouvert",
-      detail: `Sautable mais ${fragilite}. Le club pratique le standby, ` +
-        "donc l'attente sur place fait partie du jeu — c'est à toi de dire si ça vaut " +
+      detail: `Ça peut sauter, mais ${fragilite}. Au club, on attend souvent sur place ` +
+        "que les conditions s'améliorent — c'est à toi de dire si ça vaut " +
         (enjeu ? `les ${enjeu}.` : "le déplacement."),
       cout,
     };

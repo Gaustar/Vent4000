@@ -40,7 +40,7 @@ test("Fenêtre trop courte aujourd'hui -> pari ouvert, pas « partir »", () => 
 test("Modèles en désaccord aujourd'hui -> pari ouvert, pas « partir »", () => {
   const c = conseilDeplacement({ ...BON, confiance: "faible" });
   assert.equal(c.niveau, "reconfirmer");
-  assert.match(c.detail, /modèles peu d'accord/);
+  assert.match(c.detail, /prévisions ne sont pas d'accord/);
 });
 
 test("Au-delà de l'horizon de planification -> jamais « partir »", () => {
