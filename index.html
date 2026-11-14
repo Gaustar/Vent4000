@@ -18,7 +18,7 @@
   <header class="entete">
     <div class="entete-marque">
       <h1>Vent<span>4000</span></h1>
-      <p class="entete-sous">Paraclub de Namur</p>
+      <p class="entete-sous">App non officielle</p>
     </div>
     <div class="entete-actions">
       <button id="btn-niveau" class="puce-niveau" title="Changer de niveau">
@@ -54,8 +54,8 @@
         <div class="champ" role="group" aria-labelledby="bv-niveau-titre">
           <span id="bv-niveau-titre">Ton niveau</span>
           <div id="bv-niveaux" class="choix-segment"></div>
-          <small class="champ-borne">La limite de vent et l'altitude d'ouverture en dépendent
-            (RSB FWCP §3.4.2, §3.5, §6.4.1).</small>
+          <small class="champ-borne">La limite de vent et l'altitude d'ouverture en dépendent<span class="technique">
+            (RSB FWCP §3.4.2, §3.5, §6.4.1)</span>.</small>
         </div>
         <label class="champ">
           <span>Ton nombre de sauts <em>facultatif</em></span>
@@ -77,7 +77,7 @@
       <p id="reprise" class="reprise" role="status" hidden></p>
 
       <button id="reponse" class="reponse" hidden></button>
-      <p class="note-hypotheses">Indication seulement : la décision de sauter appartient au club (responsable technique, point météo du jour).</p>
+      <p class="note-hypotheses">Indication seulement, sans garantie : la décision de sauter appartient au club (responsable technique, point météo du jour).</p>
 
       <h2 class="etiquette">Maintenant</h2>
       <div class="maintenant">
@@ -101,7 +101,7 @@
 
     <!-- ============ Vue Jour ============ -->
     <section id="vue-jour" hidden>
-      <button id="btn-retour" class="btn-retour">← Semaine</button>
+      <button id="btn-retour" class="btn-retour">← Accueil</button>
 
       <div class="jour-entete">
         <h2 id="jour-titre"></h2>
@@ -176,7 +176,7 @@
 
     <!-- ============ Vue Réglages ============ -->
     <section id="vue-reglages" hidden>
-      <button id="btn-reglages-retour" class="btn-retour">← Semaine</button>
+      <button id="btn-reglages-retour" class="btn-retour">← Accueil</button>
       <h2 class="titre-vue">Réglages</h2>
 
       <details class="section" open>
@@ -289,7 +289,7 @@
 
       <details class="section">
         <summary>Vie privée</summary>
-        <p class="legal-texte"><strong>Aucune donnée personnelle ne quitte ton téléphone.</strong>
+        <p class="legal-texte"><strong>Tes informations restent sur ton téléphone.</strong>
           Ton prénom, ton niveau, ton nombre de sauts et ton trajet sont enregistrés dans ce
           navigateur seulement. Pas de compte, pas de publicité, pas de mesure d'audience.</p>
         <p class="legal-texte"><strong>« Me situer »</strong> (radar de l'avion) : ta position sert
@@ -297,7 +297,7 @@
           et le suivi s'arrête dès que tu quittes l'accueil.</p>
         <p class="legal-texte">Pour les données, l'app interroge sans aucun identifiant : Open-Meteo
           (prévisions), MET Norway (METAR et TAF de Charleroi), Statbel (prix du carburant) et un
-          relais qui lit la page météo publique du club et les positions ADS-B publiques de l'avion
+          relais (hébergé chez Cloudflare) qui lit la page météo publique du club et les positions ADS-B publiques de l'avion
           (adsb.lol, adsb.fi). Le fond du radar est une photo aérienne du Service public de Wallonie (SPW, licence CC BY 4.0).
           Ces services voient ton adresse IP, comme pour toute page web.</p>
       </details>
@@ -371,8 +371,8 @@
       <a id="lien-windy" target="_blank" rel="noopener">Windy</a>
       <a id="lien-club" target="_blank" rel="noopener">Paraclub</a>
     </nav>
-    <p class="pied-note">Outil indépendant : la décision de sauter appartient au club et aux moniteurs · <span id="version"></span></p>
-    <p class="pied-note technique">Données : Open-Meteo, MET Norway (METAR/TAF), Statbel, page publique du club, ADS-B adsb.lol (ODbL) / adsb.fi.</p>
+    <p class="pied-note">Outil indépendant, non officiel, fourni sans garantie : la décision de sauter appartient au club et aux moniteurs · <span id="version"></span></p>
+    <p class="pied-note">Données : Open-Meteo (CC BY 4.0), MET Norway (METAR/TAF, CC BY 4.0), Statbel, page publique du club, ADS-B adsb.lol (ODbL) / adsb.fi.</p>
   </footer>
 
   <script type="module" src="./js/app.js"></script>

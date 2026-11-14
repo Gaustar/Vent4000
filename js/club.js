@@ -107,7 +107,7 @@ export function lirePageClub(html, maintenant = new Date()) {
       const cellules = [...ligne.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map((m) => texte(m[1]));
       if (!entete) continue;
       const libelle = texte(entete[1]);
-      const d = new RegExp(`(\\d{1,2})\\s+(${MOIS.join("|")})`, "i").exec(libelle);
+      const d = new RegExp(`(\\d{1,2})(?:er)?\\s+(${MOIS.join("|")})`, "i").exec(libelle);
       if (!d) continue;
       const date = dateSansAnnee(Number(d[1]), MOIS.indexOf(d[2].toLowerCase()), maintenant);
       if (!date) continue;

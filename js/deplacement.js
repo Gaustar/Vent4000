@@ -104,7 +104,7 @@ export function conseilDeplacement({ verdict, duree = 0, confiance = "unique", e
       : !confianceSolide ? "les prévisions ne sont pas d'accord entre elles" : "conditions justes";
     return {
       niveau: "reconfirmer",
-      titre: "Pari ouvert",
+      titre: "À toi de voir",
       detail: `Ça peut sauter, mais ${fragilite}. Au club, on attend souvent sur place ` +
         "que les conditions s'améliorent — c'est à toi de dire si ça vaut " +
         (enjeu ? `les ${enjeu}.` : "le déplacement."),

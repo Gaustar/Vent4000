@@ -30,9 +30,9 @@ import { REGLES, evaluerSource, conditionsModele, conditionsAero } from "./regle
 import { ageMetar, conditionsTaf } from "./metar.js";
 
 // Règles dont l'absence de donnée empêche de conclure au vert : ce sont
-// les conditions légales. Pluie, orage et ouverture n'ont pas de donnée
-// manquante bloquante (les modèles les renseignent toujours).
-const REGLES_OBLIGATOIRES = new Set(["ventLegal", "ventNiveau", "rafales", "plafond", "visibilite"]);
+// les conditions légales, plus l'orage et la pluie (sans donnée, rien ne prouve
+// leur absence). L'ouverture suit le plafond.
+const REGLES_OBLIGATOIRES = new Set(["ventLegal", "ventNiveau", "rafales", "plafond", "visibilite", "orage", "pluie"]);
 
 /**
  * Sources disponibles pour une heure.
@@ -119,6 +119,7 @@ export function scoreHeure(h, seuils, aero = {}) {
     } else if (limites.length) {
       decision.statut = "limite";
     }
+    const seule = avis.length === 1 && decision.statut === "ok" && REGLES_OBLIGATOIRES.has(regle.id);
     if (avis.length) {
       const enEchec = avis.filter((x) => x.res.statut !== "ok");
       const ex = enEchec[0] ?? avis[0];
@@ -129,18 +130,23 @@ export function scoreHeure(h, seuils, aero = {}) {
           : `${ex.s.nom} : ${ex.res.detail}`;   // aucune source en échec : on nomme celle qui fait douter
       if (varEchec.length) decision.detail += ` · TAF : ${varEchec.map((v) => v.libelle).join(" ; ")}`;
     }
+    // Une seule source pour une condition légale : pas de recoupement, donc pas de feu vert.
+    if (seule) {
+      decision.statut = "nonVerifiable";
+      decision.detail = `une seule source fournit cette donnée (${avis[0].s.nom})`;
+    }
     // Prévisions en échec mais observation conforme : ni rouge contre le réel, ni vert contre les prévisions.
     if (obsOk && decision.statut === "violee") {
       decision.statut = "incertaine";
       decision.detail += ` · ${obs.nom} conforme (${resObs.detail})`;
     }
-    // Plafond : une majorité de modèles annonce une couche basse ≥ 5/8 sans en donner la hauteur,
+    // Plafond : un modèle au moins annonce une couche basse ≥ 5/8 sans en donner la hauteur,
     // et aucune source ne la mesure — les « conformes » ne voient simplement pas de couche.
     if (regle.id === "plafond" && decision.statut === "ok") {
       const modeles = voix.filter((s) => s.type === "modele");
       const sansHauteur = modeles.filter((s) => s.conditions.coucheBasse && s.conditions.plafond == null);
       const mesuree = avis.some((x) => Number.isFinite(x.s.conditions.plafond));
-      if (sansHauteur.length * 2 > modeles.length && !mesuree) {
+      if (sansHauteur.length && !mesuree) {
         decision.statut = "limite";
         decision.detail = `${sansHauteur.length}/${modeles.length} modèles annoncent une couche basse, hauteur inconnue`;
       }

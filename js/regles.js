@@ -60,10 +60,14 @@ export function conditionsModele(m, fournitBase = false) {
   };
   if (m.nuagesBas != null) {
     c.coucheBasse = m.nuagesBas >= COUCHE_PLAFOND;
-    if (!c.coucheBasse) c.plafondAuMoins = 2000;
-    // Nuages épars (au moins 1/8) dont le modèle calcule la base : gardée pour la règle « base de nuages ».
-    if (!c.coucheBasse && fournitBase && m.base > 0 && m.nuagesBas >= 12.5) c.baseMin = m.base;
-    else if (fournitBase && m.base != null && m.base > 0) c.plafond = m.base;
+    const baseConnue = fournitBase && m.base != null && m.base > 0;
+    const epars = !c.coucheBasse && m.nuagesBas >= 12.5;   // au moins 1/8 : des nuages bas existent
+    // « Pas de nuages sous 2 km » n'est affirmé que si le modèle n'en prévoit pas (< 1/8) ou s'il en
+    // calcule la base. Des nuages bas de hauteur inconnue ne prouvent pas une base ≥ 3000 ft.
+    if (!c.coucheBasse && (!epars || baseConnue)) c.plafondAuMoins = 2000;
+    if (epars && baseConnue) c.baseMin = m.base;            // gardée pour la règle « base de nuages »
+    else if (baseConnue) c.plafond = m.base;
+    if (epars && !baseConnue) c.nuagesSansHauteur = true;
   }
   return c;
 }
@@ -100,6 +104,8 @@ export function evaluerSource(c, seuils) {
     set("plafond", "ok", `> ${km(c.plafondAuMoins)} (pas de couche basse ≥ 5/8)`);
   } else if (c.coucheBasse) {
     set("plafond", "inconnu", "couche basse ≥ 5/8, base non fournie");
+  } else if (c.nuagesSansHauteur) {
+    set("plafond", "inconnu", "nuages bas, hauteur non fournie");
   } else {
     set("plafond", "inconnu", "—");
   }

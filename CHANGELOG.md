@@ -4,6 +4,31 @@ Toutes les versions notables du projet sont documentées ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 versionnage [SemVer](https://semver.org/lang/fr/) (`MAJOR.MINOR.PATCH`).
 
+## [2.10.0] — 2026-11-14
+
+Revue complète par quatre relecteurs (responsable technique, comité, utilisateur, fiabilité).
+
+### Modifié — verdict (plus strict : jamais de feu vert sans preuve)
+- Des nuages bas dont aucun modèle ne donne la hauteur ne valident plus « base ≥ 3000 ft ».
+- Un seul modèle qui annonce une couche basse non mesurée suffit à passer en orange (avant : une majorité).
+- Orage et pluie : sans donnée, plus de « respecté » par défaut.
+- Une seule source pour une condition légale : orange.
+- METAR automatique « NCD » : plafond inconnu, et non « aucun plafond ».
+- L'orange s'appelle « Incertain » (au lieu de « Ça passe juste »).
+
+### Modifié — présentation
+- L'app se dit « non officielle » dans son nom, son en-tête et son pied de page ; « sans garantie » dès l'accueil.
+- Licence MIT ajoutée ; licences des données affichées pour tous.
+- Bloc Club : message replié après le premier paragraphe, plus de seconde heure de début quand le message en donne une.
+- Langage courant (« Aucun jour sûr », « À toi de voir »), références réglementaires de l'écran Bienvenue en mode expert.
+- La limite de sauts n'est plus montrée à un passager tandem ; « Ciel à Charleroi » explique pourquoi Charleroi.
+
+### Corrigé — fiabilité
+- Prévisions lentes ou en erreur : la dernière copie datée s'affiche au lieu d'un écran d'erreur.
+- « 1er novembre » lu correctement dans le planning du club (effectif après redéploiement du relais).
+- Le nom du cache suit la version de l'app (test), pour qu'aucun téléphone ne reste sur une ancienne version.
+- Avion : une interrogation toutes les 30 s (au lieu de 15) tant qu'aucun avion n'est en vue.
+
 ## [2.9.1] — 2026-11-14
 
 Tour complet de l'app sur téléphone : lisibilité, aucune règle ni aucun seuil modifié.

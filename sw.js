@@ -4,7 +4,7 @@
 // avec repli sur la dernière prévision en cache (mode hors-ligne).
 // ============================================================
 
-const CACHE = "vent4000-v34";
+const CACHE = "vent4000-v2.10.0";   // = VERSION de js/config.js (vérifié par js/version.test.mjs)
 const SHELL = [
   "./",
   "./index.html",
@@ -65,8 +65,9 @@ self.addEventListener("fetch", (e) => {
 
   // API météo (prévisions, METAR, TAF) : réseau d'abord, cache en secours
   if (["api.open-meteo.com", "api.met.no"].includes(url.hostname)) {
-    e.respondWith(
-      fetch(e.request)
+    // Lent (8 s) ou en erreur (429, 5xx) : la dernière copie, datée, plutôt qu'un écran d'erreur.
+    const copieOu = async (sinon) => (await caches.match(e.request)) ?? sinon;
+    const reseau = fetch(e.request)
         .then((rep) => {
           if (rep.ok) {
             // L'en-tête HTTP `Date` est illisible en CORS : la copie en cache
@@ -79,8 +80,11 @@ self.addEventListener("fetch", (e) => {
             caches.open(CACHE).then((c) => c.put(e.request, datee));
           }
           return rep;
-        })
-        .catch(() => caches.match(e.request))
+        });
+    e.respondWith(
+      Promise.race([reseau, new Promise((_, refus) => setTimeout(refus, 8000))])
+        .then((rep) => (rep.ok ? rep : copieOu(rep)))
+        .catch(() => copieOu(reseau))
     );
     return;
   }

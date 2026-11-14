@@ -1,7 +1,7 @@
 {
-  "name": "Vent4000 — Météo parachutisme Paraclub de Namur",
+  "name": "Vent4000 — Météo parachutisme à Namur (non officielle)",
   "short_name": "Vent4000",
-  "description": "Ça vaut le déplacement ? Verdict par jour d'ouverture au Paraclub de Namur : règles CIR/GDF-05 et RSB FWCP par brevet, TAF et METAR de Charleroi, modèles 1,3-2,2 km.",
+  "description": "App indépendante, non officielle. Ça vaut le déplacement ? Verdict par jour d'ouverture au Paraclub de Namur : règles CIR/GDF-05 et RSB FWCP par brevet, TAF et METAR de Charleroi, modèles 1,3-2,2 km.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

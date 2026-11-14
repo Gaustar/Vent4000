@@ -26,6 +26,7 @@ export function lireConditions(tokens) {
   const c = {};
   const nuages = [];
   let ciel = false;   // le groupe parle du ciel
+  let ncd = false;    // NCD : « rien détecté » par l'automate, pas « ciel dégagé »
   const temps = [];
   let tempsDit = false; // le groupe parle du temps présent
 
@@ -63,7 +64,7 @@ export function lireConditions(tokens) {
       ciel = true;
       continue;
     }
-    if (/^(NSC|NCD|SKC|CLR)$/.test(tok)) { ciel = true; continue; }
+    if (/^(NSC|NCD|SKC|CLR)$/.test(tok)) { ciel = true; if (tok === "NCD") ncd = true; continue; }
     if (tok === "NSW") { tempsDit = true; continue; }
     m = /^(M?\d{2})\/(M?\d{2})?$/.exec(tok);
     if (m) {
@@ -82,7 +83,8 @@ export function lireConditions(tokens) {
   if (ciel) {
     c.nuages = nuages;
     const plafonds = nuages.filter((n) => n.couverture === "BKN" || n.couverture === "OVC" || n.couverture === "VV");
-    c.plafond = plafonds.length ? Math.min(...plafonds.map((n) => n.baseM)) : Infinity;
+    // NCD : l'automate n'a rien détecté, ce qui ne prouve pas un ciel dégagé → plafond inconnu.
+    c.plafond = plafonds.length ? Math.min(...plafonds.map((n) => n.baseM)) : ncd ? null : Infinity;
     c.cb = nuages.some((n) => n.cb);
     c.convectif = nuages.some((n) => n.convectif === "CB") ? "CB" : nuages.some((n) => n.convectif === "TCU") ? "TCU" : null;
   }

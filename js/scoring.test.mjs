@@ -30,8 +30,14 @@ test("evaluerSource : vent moyen hors loi, hors brevet ; rafales hors brevet", (
 });
 
 test("conditionsModele : jamais d'estimation du plafond", () => {
-  // Couche basse < 5/8 : par définition aucun plafond sous ~2 km.
-  assert.equal(conditionsModele(calme({ nuagesBas: 40 })).plafondAuMoins, 2000);
+  // Moins de 1/8 de nuages bas : aucun nuage sous ~2 km.
+  assert.equal(conditionsModele(calme({ nuagesBas: 10 })).plafondAuMoins, 2000);
+  // Nuages bas épars dont le modèle calcule la base : pas de plafond, base gardée.
+  assert.equal(conditionsModele(calme({ nuagesBas: 40, base: 1500 }), true).plafondAuMoins, 2000);
+  // Nuages bas épars de hauteur inconnue : rien ne prouve une base ≥ 3000 ft → inconnu.
+  const epars = conditionsModele(calme({ nuagesBas: 40 }));
+  assert.equal(epars.plafondAuMoins, null);
+  assert.equal(evaluerSource(epars, TANDEM).plafond.statut, "inconnu");
   // Couche basse ≥ 5/8, modèle qui CALCULE la base → base retenue.
   assert.equal(conditionsModele(calme({ nuagesBas: 90, base: 600 }), true).plafond, 600);
   // Couche basse ≥ 5/8, modèle sans base → inconnu (et non estimé).
@@ -169,7 +175,7 @@ test("Source partielle : favorable mais sans toutes les données légales -> com
   };
   const s = scoreHeure(heure(modeles), TANDEM, { maintenant: NOW });
   assert.deepEqual(s.accord, { favorables: 3, partielles: 2, total: 3 });
-  assert.equal(s.verdict, "vert", "une source complète suffit à vérifier chaque règle");
+  assert.equal(s.verdict, "orange", "une couche basse annoncée que personne ne mesure, et une seule source pour le plafond");
   const par = Object.fromEntries(s.sources.map((x) => [x.id, x.partielle]));
   assert.deepEqual(par, { meteofrance_arome_france_hd: true, icon_d2: true, dmi_harmonie_arome_europe: false });
 });
@@ -225,4 +231,25 @@ test("3000 ft pile est conforme : BKN030 et SCT030 ne sont ni un échec ni une l
   assert.equal(m("SCT030"), "ok");
   assert.equal(m("BKN029"), "echec");
   assert.equal(m("SCT029"), "limite");
+});
+
+test("jamais de feu vert sans preuve : hauteur des nuages inconnue, donnée absente, source unique", () => {
+  const CD = NIVEAUX_PRATIQUE.brevetCD;
+  const [A, I, K, D, U] = HR;
+  const v = (modeles) => scoreHeure(heure(modeles), CD, { maintenant: NOW }).verdict;
+  // Nuages bas à 50 %, aucun modèle n'en donne la hauteur.
+  assert.equal(v({ [A]: calme({ nuagesBas: 50 }), [I]: calme({ nuagesBas: 50 }), [K]: calme({ nuagesBas: 50 }) }), "orange");
+  // Une minorité de modèles annonce une couche basse sans hauteur ; les autres ne la mesurent pas.
+  assert.equal(v({ [A]: calme({ nuagesBas: 100 }), [I]: calme({ nuagesBas: 90 }), [K]: calme(), [D]: calme(), [U]: calme() }), "orange");
+  // Ni orage ni pluie renseignés : leur absence n'est pas prouvée.
+  assert.equal(v({ [A]: calme({ code: null }), [I]: calme({ code: null }), [K]: calme({ code: null }) }), "orange");
+  // Une seule source, même conforme.
+  assert.equal(v({ icon_eu: calme() }), "orange");
+  // Témoin : cinq modèles dégagés et d'accord.
+  assert.equal(v(tousHR(() => calme())), "vert");
+});
+
+test("METAR automatique « NCD » : rien détecté ne veut pas dire ciel dégagé", () => {
+  const m = parseMetar("EBCI 011220Z AUTO 24008KT 9999 NCD 21/13 Q1024", NOW);
+  assert.equal(evaluerSource(conditionsAero(m), TANDEM).plafond.statut, "inconnu");
 });

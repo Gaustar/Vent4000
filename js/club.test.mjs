@@ -53,3 +53,9 @@ test("heureClub", () => {
   assert.equal(heureClub("–"), null);
   assert.equal(heureClub(null), null);
 });
+
+test("lirePageClub : « 1er novembre » est lu comme « 1 novembre »", () => {
+  const page = PAGE.replace(/(\D)1 novembre/, "$11er novembre");
+  assert.notEqual(page, PAGE);
+  assert.deepEqual(lirePageClub(page, LU).jours, lirePageClub(PAGE, LU).jours);
+});

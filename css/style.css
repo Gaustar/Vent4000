@@ -722,3 +722,7 @@ body:not(.expert) .technique { display: none !important; }
 .f-tag { display: inline-block; max-width: 100%; }               /* la référence réglementaire reste d'un bloc */
 .resume-regles strong, .piste-infos .ligne strong { word-spacing: -0.3em; }   /* espace de la police à chasse fixe avant l'unité */
 .r-etiq { stroke-width: 5px; font-weight: 600; }                 /* lisible par-dessus les chiffres des cercles */
+
+/* v2.10.0 — champs natifs (icône du calendrier) accordés au thème */
+:root[data-theme="nuit"] { color-scheme: dark; }
+:root[data-theme="jour"] { color-scheme: light; }

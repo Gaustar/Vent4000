@@ -94,7 +94,7 @@ const JOURS_COURTS = ["Dim.", "Lun.", "Mar.", "Mer.", "Jeu.", "Ven.", "Sam."];
 const MOIS_FR = ["janv.", "févr.", "mars", "avril", "mai", "juin",
                  "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 
-const VERDICT_TEXTE = { vert: "Ça saute", orange: "Ça passe juste", rouge: "Ça ne saute pas" };
+const VERDICT_TEXTE = { vert: "Ça saute", orange: "Incertain", rouge: "Ça ne saute pas" };
 // Forme redondante avec la couleur (daltonisme rouge-vert).
 const VERDICT_SYMBOLE = { vert: "●", orange: "▲", rouge: "✕" };
 const PRECISION_TEXTE = {
@@ -428,15 +428,19 @@ function rendreClub(el) {
   const perime = c.source === "cache";
   const prochain = (c.jours ?? []).find((j) => j.date >= todayIso());
   const ton = c.etat.ton ?? "neutre";
+  const msg = c.etat.message ?? [];
+  // Le message du jour donne parfois sa propre heure de début : on n'en affiche pas une seconde à côté.
+  const heureDansMessage = prochain?.date === todayIso() && /\b\d{1,2}\s?h\s?\d{0,2}\b/i.test(msg.join(" "));
   el.hidden = false;
   el.innerHTML = `
     <span class="mt-label">Club</span>
     <div class="mt-corps">
       <p class="mt-valeur club-etat club-ton-${ton}"><span class="mt-point club-ton-${ton}" aria-hidden="true"></span>${echapper(c.etat.libelle)}</p>
-      ${c.etat.message.map((p) => `<p class="mt-detail">${echapper(p)}</p>`).join("")}
+      ${msg[0] ? `<p class="mt-detail">${echapper(msg[0])}</p>` : ""}
+      ${msg.length > 1 ? `<details class="obs-brut"><summary>Lire la suite du message du club</summary>${msg.slice(1).map((p) => `<p class="mt-detail">${echapper(p)}</p>`).join("")}</details>` : ""}
       ${prochain ? `<p class="mt-detail">${prochain.date === todayIso() ? "<b>Ouverture prévue aujourd'hui</b>" : `Prochain jour : <b>${echapper(prochain.jour.toLowerCase())} ${dateCourte(prochain.date)}</b>`}
         · point météo ${prochain.pointMeteo ? `<b>${echapper(prochain.pointMeteo)}</b>` : "pas encore annoncé"}
-        ${prochain.start ? `· début prévu à <b>${echapper(prochain.start)}</b>` : ""}</p>` : ""}
+        ${prochain.start && !heureDansMessage ? `· début prévu à <b>${echapper(prochain.start)}</b>` : ""}</p>` : ""}
       ${c.maj ? `<p class="mt-detail mt-discret">Mis à jour par le club : ${echapper(c.maj)}</p>` : ""}
     </div>
     <span class="mt-age${perime ? " perime" : ""}">${perime ? "hors ligne · " : ""}${ilYa(new Date(c.recu).getTime())}</span>`;
@@ -465,6 +469,7 @@ function rendreObsCompacte(el) {
         · <span class="${m.visibilite != null && m.visibilite < LEGAL_BE.visibiliteMin ? "obs-alerte" : ""}">${echapper(visibiliteEnClair(m.visibilite) ?? "visibilité inconnue")}</span>
         ${m.temp != null ? `· ${m.temp} °C` : ""}
         ${temps ? `· <span class="obs-alerte">${echapper(temps)}</span>` : ""}</p>
+      <p class="mt-detail mt-discret">Mesuré à l'aéroport de ${AERODROME.nom}, à ${AERODROME.distanceKm} km : la station la plus proche.</p>
       ${ventTrop ? `<p class="mt-detail">Plus fort que la limite de ton niveau (${vv(s.ventMax)} ${uniteVent()}).</p>` : ""}
       <details class="obs-brut technique"><summary>Message officiel (METAR) · observé à ${heureBruxelles(m.obs)}</summary><code>${echapper(m.brut)}</code>
         <p class="mt-detail mono">${vent}${m.rafales ? ` raf. ${vv(m.rafales)}` : ""} ${uniteVent()} · ${echapper(nuages)}</p></details>
@@ -586,7 +591,7 @@ function planifierAvion() {
   if (document.hidden || $("#vue-semaine").hidden) return;
   // Avion en vue : 10 s (= la copie du relais ; le MLAT donne une position toutes les ~5 s).
   const enVue = (etat.avion?.avions?.length ?? 0) > 0;
-  const delai = enVue ? 10000 : periodeDeVol() ? 15000 : 120000;
+  const delai = enVue ? 10000 : periodeDeVol() ? 30000 : 120000;
   minuteurAvion = setTimeout(async () => { await chargerAvion(); planifierAvion(); }, delai);
 }
 
@@ -615,10 +620,11 @@ function rendreAvion(el) {
     const nom = a.club ? `${a.immat}` : `${a.type ?? "Avion"} ${a.immat ?? ""}`;
     valeur = `${a.club ? "L'avion du club vole" : `Avion ${echapper(nom.trim())}`} · ${a.auSol ? "au sol" : `<b class="mono">${a.altitudeM != null ? a.altitudeM.toLocaleString("fr-BE") : "—"}</b> m`}${phase && !a.auSol ? ` · ${phase}` : ""}`;
     const age = a.ageS != null ? Math.round(a.ageS + (Date.now() - new Date(d.recu).getTime()) / 1000) : null;
+    const ageTxt = age >= 120 ? `${Math.round(age / 60)} min` : `${age} s`;
     detail = `<p class="mt-detail">${a.distanceKm.toLocaleString("fr-BE")} km ${versCardinal(a.relevement)} du terrain
         ${a.vitesseKmh != null ? `· ${vv(a.vitesseKmh)} ${uniteVent()}` : ""}
-        ${age != null && age > SIGNAL_PERIME_S ? `· <span class="obs-alerte">position d'il y a ${age} s</span>` : ""}</p>
-      <p class="mt-detail mt-discret technique">${a.altitudeFt != null && !a.auSol ? `${a.altitudeFt.toLocaleString("fr-BE")} ft · ` : ""}${age != null ? `signal il y a ${age} s` : ""}</p>
+        ${age != null && age > SIGNAL_PERIME_S ? `· <span class="obs-alerte">position d'il y a ${ageTxt}</span>` : ""}</p>
+      <p class="mt-detail mt-discret technique">${a.altitudeFt != null && !a.auSol ? `${a.altitudeFt.toLocaleString("fr-BE")} ft · ` : ""}${age != null ? `signal il y a ${ageTxt}` : ""}</p>
       ${a.club ? "" : `<p class="mt-detail mt-discret">Avion de parachutage près du terrain, mais pas celui du club.</p>`}`;
   }
   const ouvert = radarOuvert ?? Boolean(a);
@@ -793,7 +799,7 @@ function rendreReponse(jours) {
     el.onclick = () => { rendreReglages(); basculerVue("reglages"); };
     return;
   }
-  const titre = vert ? "Prochain jour qui saute" : orange ? "Aucun jour franc · le plus jouable" : "Aucun jour favorable sur 7 jours";
+  const titre = vert ? "Prochain jour qui saute" : orange ? "Aucun jour sûr · le moins incertain" : "Aucun jour favorable sur 7 jours";
   const fenetre = texteFenetre(choix.meilleureFenetre);
   const type = CARBURANTS[etat.reglages.trajet?.carburant] ? etat.reglages.trajet.carburant : "diesel";
   const dep = etat.reglages.trajet
@@ -938,7 +944,7 @@ function texteDuree(minutes) {
 
 /** Sur une journée limite, le club peut poser une barrière d'expérience. */
 function afficherAvertissementExperience(el, verdict) {
-  const concerne = verdict === "orange";
+  const concerne = verdict === "orange" && etat.reglages.niveau !== "tandem";   // un passager n'a pas de nombre de sauts
   el.hidden = !concerne;
   if (concerne) {
     const sauts = etat.reglages.sauts;
